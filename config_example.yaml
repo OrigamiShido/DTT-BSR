@@ -1,0 +1,73 @@
+project_name: "MSR_HTDemucs_Experiment"
+sample_rate: 48000
+clip_duration: 5.0 # 必须与数据生成脚本 (dataset_process.py) 中的设置保持一致
+
+data:
+  sample_rate: ${sample_rate}
+  clip_duration: ${clip_duration}
+
+  train_dataset:
+    # 请修改为您的训练集路径
+    path: "path/to/msr_dataset/train"
+
+  valid_dataset:
+    # 请修改为您的验证集路径
+    path: "path/to/msr_dataset/train"
+
+  dataloader_params:
+    batch_size: 2 # <-- 根据显存大小调整。
+    num_workers: 4
+    pin_memory: true
+
+# --- 指定 HTDemucs 作为生成器模型 ---
+model:
+  name: "HTDemucs"
+  params:
+    audio_channels: 2  
+    sources: [ "vocals", "guitars", "keyboards", "bass", "synthesizers", "drums", "percussion", "orchestral" ]
+
+
+# 判别器配置 
+discriminators:
+- name: "MultiPeriodDiscriminator"
+  params:
+    periods: [2, 3, 5, 7, 11]
+- name: "MultiScaleDiscriminator"
+  params:
+    downsample_rates: [2, 4]
+- name: "MultiFrequencyDiscriminator"
+  params:
+    window_sizes: [2048, 1024, 512]
+
+# 损失函数配置
+losses:
+  gan_type: "lsgan"
+  lambda_recon: 45.0
+  lambda_gan: 1.0
+  lambda_feat: 10.0
+  reconstruction_loss:
+    sample_rate: ${sample_rate}
+    n_fft: [2048, 1024, 512]
+    hop_length: [512, 256, 128]
+    n_mels: [128, 64, 32]
+
+# 优化器配置
+optimizer_g:
+  lr: 1.0e-4
+  betas: [0.8, 0.9]
+optimizer_d:
+  lr: 1.0e-4
+  betas: [0.8, 0.9]
+
+# 学习率调度器
+scheduler:
+  warm_up_steps: 5000
+
+# 训练器配置
+trainer:
+  save_dir: "./experiments"
+  max_steps: 1000000
+  log_every_n_steps: 100
+  checkpoint_save_interval: 10000
+  devices: [3,7] # 使用的 GPU ID, e.g., [0, 1] for two GPUs
+  precision: "16-mixed" # 使用 16 位混合精度以节省显存
