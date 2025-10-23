@@ -1,15 +1,35 @@
 project_name: "msrkit"
 exp_name: "melroformer_vocal_restoration"
 
+#model:
+#  name: "MelRoFormer"
+#  params:
+#    hidden_channels: 128
+#    num_layers: 12
+#    num_heads: 4
+#    window_size: 2048
+#    hop_size: 512
+#    sample_rate: 48000
+
 model:
-  name: "MelRoFormer"
+  name: "SPMamba"
   params:
-    hidden_channels: 128
-    num_layers: 12
-    num_heads: 4
-    window_size: 2048
-    hop_size: 512
-    sample_rate: 48000
+    n_srcs: 2,
+    n_fft: 128,
+    stride: 64,
+    window: "hann",
+    n_imics: 1,
+    n_layers: 6,
+    lstm_hidden_units: 192,
+    attn_n_head: 4,
+    attn_approx_qk_dim: 512,
+    emb_dim: 48,
+    emb_ks: 4,
+    emb_hs: 1,
+    activation: "prelu",
+    eps: 1.0e-5,
+    use_builtin_complex: False,
+    sample_rate: 16000
 
 discriminators:
   - name: "MultiFrequencyDiscriminator"
