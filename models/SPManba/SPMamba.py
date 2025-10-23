@@ -12,7 +12,7 @@ from packaging.version import parse as V
 from torch_complex.tensor import ComplexTensor
 is_torch_1_9_plus = V(torch.__version__) >= V("1.9.0")
 
-from look2hear.layers import Stft
+from models.SPManba.layers import Stft
 from models.utils.complex_utils import is_torch_complex_tensor
 from models.utils.complex_utils import new_complex_like
 from models.utils.get_layer_from_string import get_layer

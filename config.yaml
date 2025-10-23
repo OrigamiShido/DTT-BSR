@@ -14,21 +14,22 @@ exp_name: "melroformer_vocal_restoration"
 model:
   name: "SPMamba"
   params:
-    n_srcs: 2,
-    n_fft: 128,
-    stride: 64,
-    window: "hann",
-    n_imics: 1,
-    n_layers: 6,
-    lstm_hidden_units: 192,
-    attn_n_head: 4,
-    attn_approx_qk_dim: 512,
-    emb_dim: 48,
-    emb_ks: 4,
-    emb_hs: 1,
-    activation: "prelu",
-    eps: 1.0e-5,
-    use_builtin_complex: False,
+    input_dim: 64
+    n_srcs: 2
+    n_fft: 128
+    stride: 64
+    window: "hann"
+    n_imics: 1
+    n_layers: 6
+    lstm_hidden_units: 192
+    attn_n_head: 4
+    attn_approx_qk_dim: 512
+    emb_dim: 48
+    emb_ks: 4
+    emb_hs: 1
+    activation: "prelu"
+    eps: 1.0e-5
+    use_builtin_complex: False
     sample_rate: 16000
 
 discriminators:
@@ -44,7 +45,7 @@ data:
   clip_duration: 3.0
   train_dataset:
     target_stem: "Voc"
-    root_directory: "/path/to/your/training/data/dir"
+    root_directory: "/home/student/shihongtan/database/RawStem/"
     apply_augmentation: True
     snr_range: [0.0, 10.0]
   dataloader_params:
@@ -79,3 +80,4 @@ trainer:
   checkpoint_save_interval: 10000
   devices: [0]
   precision: bf16-mixed
+  save_dir: './experiment/'
