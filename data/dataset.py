@@ -292,3 +292,6 @@ class InfiniteSampler(Sampler):
             if self.pointer >= self.dataset_size: self.reset()
             yield self.indexes[self.pointer]
             self.pointer += 1
+
+    def __len__(self) -> int:
+        return self.dataset_size

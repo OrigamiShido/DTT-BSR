@@ -228,7 +228,10 @@ def main():
         log_every_n_steps=config['trainer']['log_every_n_steps'],
         devices=config['trainer']['devices'],
         precision=config['trainer']['precision'],
-        accelerator="gpu"
+        accelerator="gpu",
+
+        strategy="ddp_find_unused_parameters_true",
+        use_distributed_sampler=False,
     )
     
     trainer.fit(model_module, datamodule=data_module)

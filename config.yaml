@@ -30,7 +30,7 @@ model:
     activation: "prelu"
     eps: 1.0e-5
     use_builtin_complex: False
-    sample_rate: 16000
+    sample_rate: 48000
 
 discriminators:
   - name: "MultiFrequencyDiscriminator"
@@ -49,7 +49,7 @@ data:
     apply_augmentation: True
     snr_range: [0.0, 10.0]
   dataloader_params:
-    batch_size: 4
+    batch_size: 1
     num_workers: 8
 
 optimizer_g:
@@ -78,6 +78,6 @@ trainer:
   max_steps: 1000000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [0]
+  devices: [4,5,6,7]
   precision: bf16-mixed
   save_dir: './experiment/'

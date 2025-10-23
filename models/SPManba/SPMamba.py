@@ -40,7 +40,7 @@ class MambaBlock(nn.Module):
                     mixer_cls=partial(Mamba, layer_idx=i, d_state=16, d_conv=4, expand=4),
                     norm_cls=partial(RMSNorm, eps=1e-5),
                     fused_add_norm=False,
-                    mlp_cls=nn.Identity(),
+                    mlp_cls=nn.Identity,
                 )
             )
         if bidirectional:
@@ -52,7 +52,7 @@ class MambaBlock(nn.Module):
                         mixer_cls=partial(Mamba, layer_idx=i, d_state=16, d_conv=4, expand=4),
                         norm_cls=partial(RMSNorm, eps=1e-5),
                         fused_add_norm=False,
-                        mlp_cls=nn.Identity(),
+                        mlp_cls=nn.Identity,
                     )
                 )
 
