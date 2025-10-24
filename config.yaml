@@ -15,12 +15,12 @@ model:
   name: "SPMamba"
   params:
     input_dim: 64
-    n_srcs: 2
-    n_fft: 128
-    stride: 64
+    n_srcs: 1
+    n_fft: 2048
+    stride: 512
     window: "hann"
-    n_imics: 1
-    n_layers: 6
+    n_imics: 2
+    n_layers: 3
     lstm_hidden_units: 192
     attn_n_head: 4
     attn_approx_qk_dim: 512
@@ -78,6 +78,6 @@ trainer:
   max_steps: 1000000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [4,5,6,7]
+  devices: [2]
   precision: bf16-mixed
   save_dir: './experiment/'

@@ -493,7 +493,8 @@ class SPMamba(BaseModel):
             input = input.unsqueeze(0).unsqueeze(2)
         elif input.ndim == 2:
             was_one_d = True
-            input = input.unsqueeze(2)
+            input = input.unsqueeze(0)# 纯粹临时举措
+            input = input.permute(0, 2, 1).contiguous()
         elif input.ndim == 3:
             input = input.permute(0, 2, 1).contiguous()
         n_samples = input.shape[1]
