@@ -412,7 +412,7 @@ class SPMamba(BaseModel):
     def __init__(
         self,
         input_dim,
-        n_srcs=2,
+        n_srcs=1,
         n_fft=128,
         stride=64,
         window="hann",
@@ -493,38 +493,55 @@ class SPMamba(BaseModel):
             input = input.unsqueeze(0).unsqueeze(2)
         elif input.ndim == 2:
             was_one_d = True
-            input = input.unsqueeze(0)# 纯粹临时举措
-            input = input.permute(0, 2, 1).contiguous()
+            input = input.unsqueeze(1)# 纯粹临时举措
         elif input.ndim == 3:
             input = input.permute(0, 2, 1).contiguous()
-        n_samples = input.shape[1]
-        mix_std_ = torch.std(input, dim=(1, 2), keepdim=True)  # [B, 1, 1]
-        input = input / mix_std_  # RMS normalization
-        ilens = torch.ones(input.shape[0], dtype=torch.long, device=input.device) * n_samples
-        batch = self.enc(input, ilens)[0]  # [B, T, M, F]
-        batch0 = batch.transpose(1, 2)  # [B, M, T, F]
-        batch = torch.cat((batch0.real, batch0.imag), dim=1)  # [B, 2*M, T, F]
-        n_batch, _, n_frames, n_freqs = batch.shape
 
-        batch = self.conv(batch)  # [B, -1, T, F]
+        n_samples = input.shape[2]
+        n_batch = input.shape[0]
+
+        # 2. 归一化
+        mix_std_ = torch.std(input, dim=(1, 2), keepdim=True) + 1e-8 # [B, 1, 1]
+        input = input / mix_std_
+
+        # 3. 编码 (STFT)
+        ilens = torch.ones(n_batch, dtype=torch.long, device=input.device) * n_samples
+        # STFTEncoder 需要 (B, T) 或 (B, C, T) 输入，这里输入 (B, 1, T) 会被正确处理
+        spectrum, _ = self.enc(input.squeeze(1), ilens)  # [B, T, M, F], M=n_imics
+
+        # 4. 核心处理
+        batch0 = spectrum.transpose(1, 2)  # [B, M, T, F]
+        batch = torch.cat((batch0.real, batch0.imag), dim=1)  # [B, 2*M, T, F]
+        n_frames, n_freqs = batch.shape[2], batch.shape[3]
+
+        batch = self.conv(batch)  # [B, emb_dim, T, F]
 
         for ii in range(self.n_layers):
-            batch = self.blocks[ii](batch)  # [B, -1, T, F]
+            batch = self.blocks[ii](batch)  # [B, emb_dim, T, F]
 
         batch = self.deconv(batch)  # [B, n_srcs*2, T, F]
 
+        # 5. 解码 (iSTFT)
         batch = batch.view([n_batch, self.n_srcs, 2, n_frames, n_freqs])
         batch = new_complex_like(batch0, (batch[:, :, 0], batch[:, :, 1]))
 
-        batch = self.dec(batch.view(-1, n_frames, n_freqs), ilens)[0]  # [B, n_srcs, -1]
+        # iSTFT 输入需要 (B, T, F), 因此需要reshape
+        batch = self.dec(batch.view(-1, n_frames, n_freqs), ilens)[0]  # [B*n_srcs, T]
 
-        batch = self.pad2(batch.view([n_batch, self.num_spk, -1]), n_samples)
+        # 6. 输出处理
+        # Reshape to (B, n_srcs, T)
+        batch = batch.view(n_batch, self.n_srcs, -1)
 
-        batch = batch * mix_std_  # reverse the RMS normalization
+        # 填充到原始长度
+        batch = self.pad2(batch, n_samples)
 
-        batch = [batch[:, src] for src in range(self.num_spk)]
-        # import pdb; pdb.set_trace()
-        return torch.stack(batch, dim=1)
+        # 反归一化
+        batch = batch * mix_std_
+
+        # 因为 n_srcs=1, 直接返回 (B, T)
+        output = batch.squeeze(1) # (B, 1, T) -> (B, T)
+
+        return output
 
     @property
     def num_spk(self):
