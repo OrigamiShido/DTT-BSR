@@ -19,8 +19,8 @@ model:
     n_fft: 2048
     stride: 512
     window: "hann"
-    n_imics: 2
-    n_layers: 3
+    n_imics: 1
+    n_layers: 2
     lstm_hidden_units: 192
     attn_n_head: 4
     attn_approx_qk_dim: 512

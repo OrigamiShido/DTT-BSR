@@ -493,15 +493,15 @@ class SPMamba(BaseModel):
             input = input.unsqueeze(0).unsqueeze(2)
         elif input.ndim == 2:
             was_one_d = True
-            input = input.unsqueeze(1)# 纯粹临时举措
+            input = input.unsqueeze(2)# 纯粹临时举措
         elif input.ndim == 3:
             input = input.permute(0, 2, 1).contiguous()
 
-        n_samples = input.shape[2]
+        n_samples = input.shape[1]
         n_batch = input.shape[0]
 
         # 2. 归一化
-        mix_std_ = torch.std(input, dim=(1, 2), keepdim=True) + 1e-8 # [B, 1, 1]
+        mix_std_ = torch.std(input, dim=(1, 2), keepdim=True) # [B, 1, 1]
         input = input / mix_std_
 
         # 3. 编码 (STFT)
