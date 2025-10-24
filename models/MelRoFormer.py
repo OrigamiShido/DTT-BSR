@@ -14,7 +14,7 @@ class MelRoFormer(nn.Module):
         self.hop_size = hop_size
         self.sample_rate = sample_rate
         self.num_bands = 64
-        self.max_seq_len = 200
+        self.max_seq_len = 400 # 注意这里！决定了能够处理的时间帧数上限
         self.max_seq_len = self.max_seq_len * window_size // hop_size
 
         self.fourier = spectral_ops.Fourier(n_fft=window_size, hop_length=hop_size)

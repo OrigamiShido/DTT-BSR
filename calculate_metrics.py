@@ -10,6 +10,8 @@ from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
+# os.environ['HF_ENDPOINT']='https://hf-mirror.com'
+
 try:
     from transformers import ClapModel, ClapProcessor
 except ImportError:
