@@ -230,8 +230,8 @@ def main():
         precision=config['trainer']['precision'],
         accelerator="gpu",
 
-        strategy="ddp_find_unused_parameters_true",
-        use_distributed_sampler=False,
+        # strategy="ddp_find_unused_parameters_true",
+        # use_distributed_sampler=False,
     )
     
     trainer.fit(model_module, datamodule=data_module)

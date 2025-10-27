@@ -20,7 +20,7 @@ model:
     stride: 512
     window: "hann"
     n_imics: 1
-    n_layers: 2
+    n_layers: 1
     lstm_hidden_units: 192
     attn_n_head: 4
     attn_approx_qk_dim: 512
@@ -78,6 +78,6 @@ trainer:
   max_steps: 1000000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [2]
+  devices: [7]
   precision: bf16-mixed
   save_dir: './experiment/'
