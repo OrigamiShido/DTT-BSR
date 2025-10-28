@@ -43,6 +43,7 @@ class MambaBlock(nn.Module):
                     mlp_cls=nn.Identity,
                 )
             )
+        self.backward_blocks = None
         if bidirectional:
             self.backward_blocks = nn.ModuleList([])
             for i in range(n_layer):
@@ -74,7 +75,8 @@ class MambaBlock(nn.Module):
 
             back_residual = torch.flip(back_residual, [1])
             residual = torch.cat([residual, back_residual], -1)
-        
+        else:
+            pass
         return residual
     
 
@@ -581,23 +583,23 @@ class GridNetBlock(nn.Module):
 
         self.intra_norm = LayerNormalization4D(emb_dim, eps=eps)
         
-        self.intra_mamba = MambaBlock(in_channels, 1, True)
+        self.intra_mamba = MambaBlock(in_channels, 1, False)
         # self.intra_rnn = nn.LSTM(
         #     in_channels, hidden_channels, 1, batch_first=True, bidirectional=True
         # )
         
         self.intra_linear = nn.ConvTranspose1d(
-            in_channels * 2, emb_dim, emb_ks, stride=emb_hs
+            in_channels, emb_dim, emb_ks, stride=emb_hs
         )
         
         self.inter_norm = LayerNormalization4D(emb_dim, eps=eps)
-        self.inter_mamba = MambaBlock(in_channels, 1, True)
+        self.inter_mamba = MambaBlock(in_channels, 1, False)
         
         # self.inter_rnn = nn.LSTM(
         #     in_channels, hidden_channels, 1, batch_first=True, bidirectional=True
         # )
         self.inter_linear = nn.ConvTranspose1d(
-            in_channels * 2, emb_dim, emb_ks, stride=emb_hs
+            in_channels, emb_dim, emb_ks, stride=emb_hs
         )
 
         E = math.ceil(
