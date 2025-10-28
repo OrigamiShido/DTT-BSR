@@ -12,25 +12,15 @@ exp_name: "melroformer_vocal_restoration"
 #    sample_rate: 48000
 
 model:
-  name: "SPMamba"
+  name: "TIGER"
   params:
-    input_dim: 64
-    n_srcs: 1
-    n_fft: 2048
+    out_channels: 128
+    in_channels: 256
+    num_blocks: 12
+    upsampling_depth: 5
+    win: 2048
     stride: 512
-    window: "hann"
-    n_imics: 1
-    n_layers: 1
-    lstm_hidden_units: 192
-    attn_n_head: 4
-    attn_approx_qk_dim: 512
-    emb_dim: 48
-    emb_ks: 4
-    emb_hs: 1
-    activation: "prelu"
-    eps: 1.0e-5
-    use_builtin_complex: False
-    sample_rate: 48000
+    num_sources: 1
 
 discriminators:
   - name: "MultiFrequencyDiscriminator"
