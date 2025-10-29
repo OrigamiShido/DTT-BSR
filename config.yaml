@@ -12,25 +12,26 @@ exp_name: "melroformer_vocal_restoration"
 #    sample_rate: 48000
 
 model:
-  name: "SPMamba"
+  name: "DTTNet"
   params:
-    input_dim: 64
-    n_srcs: 1
+    dim_f: 864
+    dim_t: 256
     n_fft: 2048
-    stride: 512
-    window: "hann"
-    n_imics: 1
-    n_layers: 1
-    lstm_hidden_units: 192
-    attn_n_head: 4
-    attn_approx_qk_dim: 512
-    emb_dim: 48
-    emb_ks: 4
-    emb_hs: 1
-    activation: "prelu"
-    eps: 1.0e-5
-    use_builtin_complex: False
-    sample_rate: 48000
+    hop_length: 512
+    audio_ch: 1
+    block_type: TFC_TDF_Res2
+    num_blocks: 5
+    l: 3
+    g: 32
+    k: 3
+    bn: 2
+    bias: False
+    bn_norm: BN
+    bandsequence:
+      rnn_type: LSTM
+      bidirectional: True
+      num_layers: 4
+      n_heads: 2
 
 discriminators:
   - name: "MultiFrequencyDiscriminator"
@@ -78,6 +79,6 @@ trainer:
   max_steps: 1000000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [7]
+  devices: [6]
   precision: bf16-mixed
   save_dir: './experiment/'

@@ -7,10 +7,24 @@ from models.DTTNet.dp_tdf.bandsequence import BandSequenceModelModule
 from models.DTTNet.layers import (get_norm)
 from models.DTTNet.dp_tdf.abstract import AbstractModel
 
-class DPTDFNet(AbstractModel):
-    def __init__(self, num_blocks, l, g, k, bn, bias, bn_norm, bandsequence, block_type,  **kwargs):
+class DPTDFNet(nn.Module):
+    def __init__(self,
+                 num_blocks,
+                 l,
+                 g,
+                 k,
+                 bn,
+                 bias,
+                 bn_norm,
+                 bandsequence,
+                 block_type,
+                 dim_f,
+                 dim_t,
+                 n_fft,
+                 hop_length,
+                 audio_ch, **kwargs):
 
-        super(DPTDFNet, self).__init__(**kwargs)
+        super().__init__()
         # self.save_hyperparameters()
 
         self.num_blocks = num_blocks
@@ -22,6 +36,18 @@ class DPTDFNet(AbstractModel):
 
         self.n = num_blocks // 2
         scale = (2, 2)
+
+        self.dim_c_in = audio_ch * 2
+        self.dim_c_out = audio_ch * 2
+        self.dim_f = dim_f
+        self.dim_t = dim_t
+        self.n_fft = n_fft
+        self.n_bins = n_fft // 2 + 1
+        self.hop_length = hop_length
+        self.audio_ch = audio_ch
+
+        self.window = nn.Parameter(torch.hann_window(window_length=self.n_fft, periodic=True), requires_grad=False)
+        self.freq_pad = nn.Parameter(torch.zeros([1, self.dim_c_out, self.n_bins - self.dim_f, 1]), requires_grad=False)
 
         if block_type == "TFC_TDF":
             T_BLOCK = TFC_TDF
@@ -90,6 +116,9 @@ class DPTDFNet(AbstractModel):
         Args:
             x: (batch, c*2, 2048, 256)
         '''
+
+        x=self.stft(x)
+
         x = self.first_conv(x)
 
         x = x.transpose(-1, -2)
@@ -108,6 +137,9 @@ class DPTDFNet(AbstractModel):
             x = self.us[i](x)
             # print(f"us{i} in: {x.shape}")
             # print(f"ds{i} out: {ds_outputs[-i - 1].shape}")
+            if x.shape != ds_outputs[-i - 1].shape:
+                # 裁剪 x 的最后两个维度以匹配 skip_connection
+                x = x[..., :ds_outputs[-i - 1].shape[-2], :ds_outputs[-i - 1].shape[-1]]
             x = x * ds_outputs[-i - 1]
             x = self.decoding_blocks[i](x)
 
@@ -115,4 +147,31 @@ class DPTDFNet(AbstractModel):
 
         x = self.final_conv(x)
 
+        x=self.istft(x)
+
         return x
+
+    def stft(self, x):
+        '''
+        Args:
+            x: (batch, c, 261120)
+        '''
+        dim_b = x.shape[0]
+        x=x.unsqueeze(1)
+        x = x.reshape([dim_b * self.audio_ch, -1]) # (batch*c, 261120)
+        x = torch.stft(x, n_fft=self.n_fft, hop_length=self.hop_length, window=self.window, center=True,return_complex=False) # (batch*c, 3073, 256, 2)
+        x = x.permute([0, 3, 1, 2]) # (batch*c, 2, 3073, 256)
+        x = x.reshape([dim_b, self.audio_ch, 2, self.n_bins, -1]).reshape([dim_b, self.audio_ch * 2, self.n_bins, -1]) # (batch, c*2, 3073, 256)
+        return x[:, :, :self.dim_f] # (batch, c*2, 2048, 256)
+
+    def istft(self, x):
+        '''
+        Args:
+            x: (batch, c*2, 2048, 256)
+        '''
+        dim_b = x.shape[0]
+        x = torch.cat([x, self.freq_pad.repeat([x.shape[0], 1, 1, x.shape[-1]])], -2) # (batch, c*2, 3073, 256)
+        x = x.reshape([dim_b, self.audio_ch, 2, self.n_bins, -1]).reshape([dim_b * self.audio_ch, 2, self.n_bins, -1]) # (batch*c, 2, 3073, 256)
+        x = x.permute([0, 2, 3, 1]) # (batch*c, 3073, 256, 2)
+        x = torch.istft(x, n_fft=self.n_fft, hop_length=self.hop_length, window=self.window, center=True) # (batch*c, 261120)
+        return x.reshape([dim_b, self.audio_ch, -1]) # (batch,c,261120)
