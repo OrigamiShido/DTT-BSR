@@ -47,13 +47,42 @@ from audiotools import AudioSignal
 VINYL_CRACKLE_PATH = 'path/to/vinyl_crackle.wav'  # 替换为实际路径
 WHAM_NOISE_DIR = 'path/to/wham_noise/'  # 替换为实际路径
 
-# 假设 dataset.py 在父目录的 data/ 下，或者可以直接导入
-# 尝试导入，如果失败则在本地定义
-from .dataset import fix_length_to_duration  # Try relative import first
-
 
 logger = logging.getLogger(__name__)
+def fix_length_to_duration(target: np.ndarray, duration_samples: int) -> np.ndarray:
+    """修正音频长度，增加健壮性"""
+    # 检查 duration_samples
+    if duration_samples <= 0:
+        num_channels = target.shape[0] if isinstance(target, np.ndarray) and target.ndim >= 2 else 2
+        dtype = target.dtype if isinstance(target, np.ndarray) else np.float32
+        return np.zeros((num_channels, 0), dtype=dtype)
 
+    # 检查 target
+    if not isinstance(target, np.ndarray) or target.ndim == 0:
+        logger.warning(f"fix_length received invalid input type/shape: {type(target)}. Returning zeros.")
+        num_channels = 2; dtype = np.float32
+        return np.zeros((num_channels, duration_samples), dtype=dtype)
+
+    target_length = target.shape[-1]
+
+    if target_length == duration_samples: return target
+    elif target_length < duration_samples:
+        pad_width = [(0, 0)] * (target.ndim - 1) + [(0, duration_samples - target_length)]
+        try:
+            # 确保填充值为 0
+            return np.pad(target, pad_width, mode='constant', constant_values=0)
+        except ValueError as e: # 处理可能的填充错误
+            logger.error(f"Error padding audio shape {target.shape} to {duration_samples}: {e}. Returning zeros.")
+            num_channels = target.shape[0] if target.ndim >= 2 else 2
+            return np.zeros((num_channels, duration_samples), dtype=target.dtype)
+    else: # target_length > duration_samples
+        try:
+            slices = [slice(None)] * (target.ndim - 1) + [slice(0, duration_samples)]
+            return target[tuple(slices)]
+        except IndexError as e: # 处理可能的切片错误
+            logger.error(f"Error slicing audio shape {target.shape} to {duration_samples}: {e}. Returning zeros.")
+            num_channels = target.shape[0] if target.ndim >= 2 else 2
+            return np.zeros((num_channels, duration_samples), dtype=target.dtype)
 # --- 辅助函数 ---
 def _calculate_rms(audio: np.ndarray) -> float:
     epsilon = 1e-10
