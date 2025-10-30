@@ -14,8 +14,7 @@ exp_name: "melroformer_vocal_restoration"
 model:
   name: "DTTNet"
   params:
-    dim_f: 864
-    dim_t: 256
+    dim_f: 1025
     n_fft: 2048
     hop_length: 512
     audio_ch: 1
@@ -27,6 +26,8 @@ model:
     bn: 2
     bias: False
     bn_norm: BN
+    sample_rate: 48000
+    hidden_channels: 128
     bandsequence:
       rnn_type: LSTM
       bidirectional: True
@@ -80,5 +81,5 @@ trainer:
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
   devices: [6]
-  precision: bf16-mixed
+  precision: 16-mixed
   save_dir: './experiment/'

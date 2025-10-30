@@ -99,7 +99,7 @@ class Band(nn.Module):
 
     def init_scale_banks(self) -> tuple[np.ndarray, np.ndarray]:
         if self.scale == 'mel':
-            filterbanks = librosa.filters.mel(sr=self.sr, n_fft=self.n_fft, n_mels=self.bands_num, norm=None, fmax=self.sr/2+1)# 纯粹临时举措
+            filterbanks = librosa.filters.mel(sr=self.sr, n_fft=self.n_fft, n_mels=self.bands_num, norm=None, fmax=self.sr/2)
         elif self.scale == 'linear':
             points = np.linspace(0, self.F, self.bands_num + 2)
             bins = points.astype(int)
