@@ -51,7 +51,7 @@ data:
     apply_augmentation: True
     snr_range: [0.0, 10.0]
   dataloader_params:
-    batch_size: 1
+    batch_size: 2
     num_workers: 8
 
 optimizer_g:
@@ -67,9 +67,9 @@ scheduler:
 
 losses:
   gan_type: 'lsgan'
-  lambda_recon: 100.0
-  lambda_feat: 2.0
-  lambda_gan: 1.0
+  lambda_recon: 45.0
+  lambda_feat: 4.0
+  lambda_gan: 2.0
   reconstruction_loss:
     sample_rate: 48000
     n_fft: [1024, 2048, 512]
