@@ -104,9 +104,9 @@ B. **验证数据集 (MSRBench)**
 ```
 python preprocess.py --root-directory /path/to/your/training_data --target-stem Vocals --output-directory /path/to/preprocessed_train --num-samples 100000 --sr 48000 --clip-duration 4.0 --split train --max-workers 8
 ```
-脚本将生成 FLAC 文件对（e.g., sample_0000001_mix.flac 和 sample_0000001_target.flac）。这预计算了昂贵的混合和退化（MixtureAugmentation），加速后续训练。重复运行以生成 validation 或 test 预处理数据（更改 --split 和 --output-directory）。
+脚本将生成 FLAC 文件对（e.g., sample_0000001_mix.flac 和 sample_0000001_target.flac）。这预计算了昂贵的混合和退化（MixtureAugmentation），加速后续训练。重复运行以生成 train 或 test 预处理数据（更改 --split 和 --output-directory）。
 
-**新添加**：强烈推荐先预处理再训练，以处理 RawStems 的质量问题并提升效率。多进程 (--max-workers) 可显著缩短时间（取决于 CPU 核心数）。
+**新添加**：多进程 (--max-workers) 可显著缩短时间（取决于 CPU 核心数）。
 
 ### 步骤 4：(一次性) 运行 RMS 预分析
 此步骤仅适用于原始训练数据集（如果不使用预处理数据）。
@@ -121,14 +121,9 @@ python generate_rms_analysis.py
 ```
 脚本将遍历所有音频文件，并在 DATASET_ROOT 目录下生成一个名为 rms_analysis.jsonl 的文件。dataset.py 会自动查找并使用这个文件来进行非静音采样。
 
-**新添加**：如果 RawStems 数据有泄漏问题，此步骤有助于过滤低质量剪辑。如果使用预处理数据，此步骤可选，因为 preprocess.py 已内置 RMS 检查。
+**新添加**：如果数据有泄漏问题，此步骤有助于过滤低质量剪辑。如果使用预处理数据，此步骤可选，因为 preprocess.py 已内置 RMS 检查。
 
 ### 步骤 5：集成与训练
 - **集成 MSRKit**：复制 dataset.py、augment.py 和 preprocess.py 到 MSRKit/data/。修改 MSRKit/config.yaml 的 data 部分（如上示例）。如果使用预处理数据，在 config.yaml 中指定 PreprocessedRawStems 类和预处理路径。
 - **训练**：运行 `python train.py --config config.yaml`。监控日志，确保增强应用 (e.g., DT 类型随机)。
 - **验证**：在 config.yaml 设置 validation_dataset，使用 calculate_metrics.py 评估 (生成 eval_list.txt: target_path|output_path)。
-
-### 步骤 6：测试与评估
-- **独立测试**：`from dataset import RawStemsDataset; dataset = RawStemsDataset('vocals', '/path/to/training_data', is_validation=False); sample = dataset[0]`。检查 sample['mixture'].shape == (2, 192000) (4s @48kHz)。如果使用预处理：`from dataset import PreprocessedRawStems; dataset = PreprocessedRawStems('/path/to/preprocessed_train'); sample = dataset[0]`。
-- **MSRBench 验证**：`dataset = RawStemsDataset('Vocals', '/path/to/MSRBench_unzipped/Vocals', is_validation=True, validation_dt_ids=[0,1,2])`。sample = dataset[0] 应为 10s clip。
-- **指标**：用 MSRKit evaluate.py 计算 SI-SNR/FAD-CLAP。
