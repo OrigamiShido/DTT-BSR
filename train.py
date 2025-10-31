@@ -12,6 +12,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
 from data.dataset import RawStems, InfiniteSampler
 from models import MelRNN, MelRoFormer, UNet
+from models.SPManba import SPMamba
+from models.DTTNet.dp_tdf.dp_tdf_net import DPTDFNet
 from losses.gan_loss import GeneratorLoss, DiscriminatorLoss, FeatureMatchingLoss
 from losses.reconstruction_loss import MultiMelSpecReconstructionLoss
 
@@ -101,6 +103,10 @@ class MusicRestorationModule(pl.LightningModule):
             return MelRoFormer.MelRoFormer(**model_cfg['params'])
         elif model_cfg['name'] == 'MelUNet':
             return UNet.MelUNet(**model_cfg['params'])
+        elif model_cfg['name'] == 'SPMamba':
+            return SPMamba(**model_cfg['params'])
+        elif model_cfg['name'] == 'DTTNet':
+            return DPTDFNet(**model_cfg['params'])
         else:
             raise ValueError(f"Unknown model name: {model_cfg['name']}")
 
@@ -225,7 +231,10 @@ def main():
         log_every_n_steps=config['trainer']['log_every_n_steps'],
         devices=config['trainer']['devices'],
         precision=config['trainer']['precision'],
-        accelerator="gpu"
+        accelerator="gpu",
+
+        # strategy="ddp_find_unused_parameters_true",
+        # use_distributed_sampler=False,
     )
     
     trainer.fit(model_module, datamodule=data_module)
