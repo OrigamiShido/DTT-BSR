@@ -26,9 +26,26 @@ from pathlib import Path
 from tqdm import tqdm
 import os
 
-# Key imports (make independent: copy from dataset.py/augment.py)
+try:
+    # 尝试从 dataset.py 导入所有必要的辅助函数
+    from dataset import (
+        load_audio, 
+        fix_length_to_duration, 
+        mix_to_target_snr, 
+        contains_audio_signal, 
+        get_audio_duration,
+        calculate_rms,
+        RMS_THRESHOLD_LINEAR,
+        DEFAULT_GAIN_RANGE,
+        AUDIO_EXTENSIONS
+    )
+except ImportError as e:
+    print(f"Error: 无法导入 'dataset.py'。")
+    print(f"请确保这些文件与 preprocess.py 位于同一目录，或者在 PYTHONPATH 中。")
+    print(f"原始错误: {e}")
+    exit(1)
 import librosa  # For resampling if needed
-from augment import MixtureAugmentation  # Assume this is in same dir or PYTHONPATH
+from augment import MixtureAugmentation
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
