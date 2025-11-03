@@ -5,7 +5,7 @@ from models.DTTNet.dp_tdf.modules import TFC_TDF, TFC_TDF_Res1, TFC_TDF_Res2
 from models.DTTNet.dp_tdf.bandsequence import BandSequenceModelModule
 
 from models.DTTNet.layers import (get_norm)
-from models.DTTNet.dp_tdf.abstract import AbstractModel
+# from models.DTTNet.dp_tdf.abstract import AbstractModel
 
 from modules.spectral_ops import Fourier, Band
 
@@ -76,8 +76,8 @@ class DPTDFNet(nn.Module):
 
         self.fourier = Fourier(n_fft=n_fft, hop_length=hop_length)
 
-        # self.num_bands=64
-        # self.band = Band(sr=sample_rate, n_fft=n_fft, bands_num=self.num_bands, in_channels=2, out_channels=hidden_channels, scale='mel')
+        self.num_bands=64
+        self.band = Band(sr=sample_rate, n_fft=n_fft, bands_num=self.num_bands, in_channels=2, out_channels=hidden_channels, scale='mel')
 
         self.encoding_blocks = nn.ModuleList()
         self.ds = nn.ModuleList()
@@ -121,8 +121,10 @@ class DPTDFNet(nn.Module):
 
         origianl_length=x.shape[-1]
         x=self.fourier.stft(x)# B,F,T,C
-        x=x.permute([0,3,1,2])  # B,C,F,T
-        # x=self.band.split(x)
+        # x=x.permute([0,3,1,2])  # B,C,F,T
+        x=self.band.split(x)#B,C,T,F
+
+        x=x.permute([0,1,3,2])# B,C,F,T
 
         x = self.first_conv(x)
 
