@@ -5,6 +5,11 @@ from models.DTTNet.dp_tdf.modules import TFC_TDF, TFC_TDF_Res1, TFC_TDF_Res2
 from models.DTTNet.dp_tdf.bandsequence import BandSequenceModelModule
 
 from models.DTTNet.layers import (get_norm)
+
+from models.DTTNet.dp_tdf.SnM import SplitModule,SplitAndMerge
+
+# from models.DTTNet.dp_tdf.abstract import AbstractModel
+
 from modules.spectral_ops import Fourier, Band
 
 class DPTDFNet(nn.Module):
@@ -61,7 +66,7 @@ class DPTDFNet(nn.Module):
 
         # 关键修改：确保num_bands与band模块一致
         self.num_bands = 128  # 固定为64，与band模块匹配
-        self.band = Band(sr=sample_rate, n_fft=n_fft, bands_num=self.num_bands, 
+        self.band = Band(sr=sample_rate, n_fft=n_fft, bands_num=self.num_bands,
                         in_channels=2, out_channels=hidden_channels, scale='mel')
 
         self.first_conv = nn.Sequential(
@@ -90,7 +95,7 @@ class DPTDFNet(nn.Module):
         for i in range(self.n):
             c_in = c
 
-            self.encoding_blocks.append(T_BLOCK(c_in, c, l, f, k, bn, bn_norm, bias=bias))
+            self.encoding_blocks.append(SplitAndMerge(c_in,c,f,n_band,bn_norm,l,l,bn,k,bias=bias))
             self.ds.append(
                 nn.Sequential(
                     nn.Conv2d(in_channels=c, out_channels=c + g, kernel_size=scale, stride=scale),
@@ -99,13 +104,14 @@ class DPTDFNet(nn.Module):
                 )
             )
 
-            self.decoding_blocks.insert(0, T_BLOCK(c, c, l, f, k, bn, bn_norm, bias=bias))
+
+            self.decoding_blocks.insert(0,SplitAndMerge(c,c,f,n_band,bn_norm,l,l,bn,k,bias=bias))
             f = f // 2
             c += g
 
             self.us.insert(0, UpSamplingBlock(c, g, scale, bn_norm))
 
-        self.bottleneck_block1 = T_BLOCK(c, c, l, f, k, bn, bn_norm, bias=bias)
+        self.bottleneck_block1 = SplitAndMerge(c,c,f,n_band,bn_norm,l,l,bn,k,bias=bias)
         self.bottleneck_block2 = BandSequenceModelModule(
             **bandsequence,
             input_dim_size=c,
@@ -140,11 +146,14 @@ class DPTDFNet(nn.Module):
             ds_outputs.append(x)
             x = self.ds[i](x)
 
+        # print(f"bottleneck in: {x.shape}")
         x = self.bottleneck_block1(x)
         x = self.bottleneck_block2(x)
 
         for i in range(self.n):
-            x = self.us[i](x, output_size=ds_outputs[-i - 1].shape)
+            x = self.us[i](x,output_size=ds_outputs[-i - 1].shape)
+            # print(f"us{i} in: {x.shape}")
+            # print(f"ds{i} out: {ds_outputs[-i - 1].shape}")
             x = x * ds_outputs[-i - 1]
             x = self.decoding_blocks[i](x)
 
@@ -158,11 +167,11 @@ class DPTDFNet(nn.Module):
             print(f"Warning: Adjusting bands dimension from {x.shape[2]} to {self.num_bands}")
             # 使用插值调整bands维度
             x = torch.nn.functional.interpolate(x, size=(self.num_bands, x.shape[3]), mode='nearest')
-        
+
         x = x.permute([0, 2, 3, 1])  # B, F, T, C → [batch, num_bands, time, hidden_channels]
-        
+
         print(f"Before unsplit: x.shape={x.shape}, expected bands={self.num_bands}, channels={self.band.out_channels}")
-        
+
         x = self.band.unsplit(x)
         x = self.fourier.istft(x.contiguous(), origianl_length)
 
