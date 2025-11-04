@@ -4,6 +4,8 @@ import torch
 from models.DTTNet.dp_tdf.modules import TFC_TDF, TFC_TDF_Res1, TFC_TDF_Res2
 from models.DTTNet.dp_tdf.bandsequence import BandSequenceModelModule
 
+from models.DTTNet.dp_tdf.RoPETransformer import RoPETransformer
+
 from models.DTTNet.layers import (get_norm)
 # from models.DTTNet.dp_tdf.abstract import AbstractModel
 
@@ -26,6 +28,7 @@ class DPTDFNet(nn.Module):
                  audio_ch,
                  sample_rate,
                  hidden_channels,
+                 RoPEParams,
                  **kwargs):
 
         super().__init__()
@@ -105,11 +108,12 @@ class DPTDFNet(nn.Module):
             self.us.insert(0,UpSamplingBlock(c,g,scale,bn_norm))
 
         self.bottleneck_block1 = T_BLOCK(c, c, l, f, k, bn, bn_norm, bias=bias)
-        self.bottleneck_block2 = BandSequenceModelModule(
-            **bandsequence,
-            input_dim_size=c,
-            hidden_dim_size=2*c
-        )
+        self.bottleneck_block2 = RoPETransformer(c,**RoPEParams)
+        # self.bottleneck_block2 = BandSequenceModelModule(
+        #     **bandsequence,
+        #     input_dim_size=c,
+        #     hidden_dim_size=2*c
+        # )
 
     def forward(self, x):
         '''
@@ -121,14 +125,15 @@ class DPTDFNet(nn.Module):
 
         origianl_length=x.shape[-1]
         x=self.fourier.stft(x)# B,F,T,C
-        # x=x.permute([0,3,1,2])  # B,C,F,T
-        x=self.band.split(x)#B,C,T,F
 
-        x=x.permute([0,1,3,2])# B,C,F,T
+        x=x.permute([0,3,1,2])  # B,C,F,T
+
+        # x=self.band.split(x)#B,C,T,F
+        # x=x.permute([0,1,3,2])# B,C,F,T
 
         x = self.first_conv(x)
 
-        x = x.transpose(-1, -2)
+        x = x.transpose(-1, -2)# B,C,T,F
 
         ds_outputs = []
         for i in range(self.n):
@@ -138,7 +143,12 @@ class DPTDFNet(nn.Module):
 
         # print(f"bottleneck in: {x.shape}")
         x = self.bottleneck_block1(x)
+
+        x=x.permute([0,2,3,1])# B,T,F,C
+
         x = self.bottleneck_block2(x)
+
+        x=x.permute([0,3,1,2])# B,C,T,F
 
         for i in range(self.n):
             x = self.us[i](x,output_size=ds_outputs[-i - 1].shape)
