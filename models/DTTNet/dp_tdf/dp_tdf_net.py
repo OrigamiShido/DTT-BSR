@@ -119,13 +119,13 @@ class DPTDFNet(nn.Module):
         '''
 
         origianl_length = x.shape[-1]
-        
+
         # compute complex STFT (real,imag)
-        sp = self.fourier.stft(x)  # expected shape (B, F, T, 2)
+        x = self.fourier.stft(x)  # expected shape (B, F, T, 2)
 
         # keep complex stft (real, imag) to preserve phase information
         # sp has shape (B, F, T, 2) where last dim is (real, imag)
-        x = self.band.split(sp)  # B, d, T, K (after split)
+        x = self.band.split(x)  # B, d, T, K (after split)
         # x的形状应该是 [batch, hidden_channels, time, num_bands]
 
         x = x.permute([0, 1, 3, 2])  # B, C, F, T → [batch, hidden_channels, num_bands, time]
