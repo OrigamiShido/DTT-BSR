@@ -5,6 +5,9 @@ from models.DTTNet.dp_tdf.modules import TFC_TDF, TFC_TDF_Res1, TFC_TDF_Res2
 from models.DTTNet.dp_tdf.bandsequence import BandSequenceModelModule
 
 from models.DTTNet.layers import (get_norm)
+
+from models.DTTNet.dp_tdf.SnM import SplitModule,SplitAndMerge
+
 # from models.DTTNet.dp_tdf.abstract import AbstractModel
 
 from modules.spectral_ops import Fourier, Band
@@ -88,7 +91,7 @@ class DPTDFNet(nn.Module):
         for i in range(self.n):
             c_in = c
 
-            self.encoding_blocks.append(T_BLOCK(c_in, c, l, f, k, bn, bn_norm, bias=bias))
+            self.encoding_blocks.append(SplitAndMerge(c_in,c,f,n_band,bn_norm,l,l,bn,k,bias=bias))
             self.ds.append(
                 nn.Sequential(
                     nn.Conv2d(in_channels=c, out_channels=c + g, kernel_size=scale, stride=scale),
@@ -98,13 +101,13 @@ class DPTDFNet(nn.Module):
             )
 
 
-            self.decoding_blocks.insert(0,T_BLOCK(c, c, l, f, k, bn, bn_norm, bias=bias))
+            self.decoding_blocks.insert(0,SplitAndMerge(c,c,f,n_band,bn_norm,l,l,bn,k,bias=bias))
             f = f // 2
             c += g
 
             self.us.insert(0,UpSamplingBlock(c,g,scale,bn_norm))
 
-        self.bottleneck_block1 = T_BLOCK(c, c, l, f, k, bn, bn_norm, bias=bias)
+        self.bottleneck_block1 = SplitAndMerge(c,c,f,n_band,bn_norm,l,l,bn,k,bias=bias)
         self.bottleneck_block2 = BandSequenceModelModule(
             **bandsequence,
             input_dim_size=c,
