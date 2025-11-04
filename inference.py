@@ -10,6 +10,7 @@ import numpy as np
 from tqdm import tqdm
 
 from models import MelRNN, MelRoFormer, UNet
+from models.TIGER.models.tiger import TIGER
 
 
 def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = 'cuda') -> nn.Module:
@@ -23,6 +24,8 @@ def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = '
         generator = MelRoFormer.MelRoFormer(**model_cfg['params'])
     elif model_cfg['name'] == 'MelUNet':
         generator = UNet.MelUNet(**model_cfg['params'])
+    elif model_cfg['name'] == 'TIGER':
+        generator = TIGER(**model_cfg['params'])
     else:
         raise ValueError(f"Unknown model name: {model_cfg['name']}")
     
