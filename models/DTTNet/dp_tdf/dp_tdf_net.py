@@ -4,6 +4,8 @@ import torch
 from models.DTTNet.dp_tdf.modules import TFC_TDF, TFC_TDF_Res1, TFC_TDF_Res2
 from models.DTTNet.dp_tdf.bandsequence import BandSequenceModelModule
 
+from models.DTTNet.dp_tdf.RoPETransformer import RoPETransformer
+
 from models.DTTNet.layers import (get_norm)
 from modules.spectral_ops import Fourier, Band
 
@@ -24,6 +26,7 @@ class DPTDFNet(nn.Module):
                  audio_ch,
                  sample_rate,
                  hidden_channels,
+                 RoPEParams,
                  **kwargs):
 
         super().__init__()
@@ -106,6 +109,7 @@ class DPTDFNet(nn.Module):
             self.us.insert(0, UpSamplingBlock(c, g, scale, bn_norm))
 
         self.bottleneck_block1 = T_BLOCK(c, c, l, f, k, bn, bn_norm, bias=bias)
+        self.bottleneck_block3 = RoPETransformer(c,**RoPEParams)
         self.bottleneck_block2 = BandSequenceModelModule(
             **bandsequence,
             input_dim_size=c,
@@ -141,7 +145,14 @@ class DPTDFNet(nn.Module):
             x = self.ds[i](x)
 
         x = self.bottleneck_block1(x)
-        x = self.bottleneck_block2(x)
+
+        x=self.bottleneck_block2(x)
+
+        x=x.permute([0,2,3,1])# B,T,F,C
+
+        x = self.bottleneck_block3(x)
+
+        x=x.permute([0,3,1,2])# B,C,T,F
 
         for i in range(self.n):
             x = self.us[i](x, output_size=ds_outputs[-i - 1].shape)
@@ -153,7 +164,7 @@ class DPTDFNet(nn.Module):
         x = self.final_conv(x)  # [batch, hidden_channels, num_bands, time]
 
         x=x.permute([0, 1, 3, 2])  # B, C, T, F → [batch, hidden_channels, time, num_bands]
-        
+
         x = self.band.unsplit(x)
         x = self.fourier.istft(x.contiguous(), origianl_length)
 

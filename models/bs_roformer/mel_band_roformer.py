@@ -6,7 +6,7 @@ from torch import nn, einsum, tensor, Tensor
 from torch.nn import Module, ModuleList
 import torch.nn.functional as F
 
-from bs_roformer.attend import Attend
+from models.bs_roformer.attend import Attend
 
 from beartype.typing import Callable
 from beartype import beartype
