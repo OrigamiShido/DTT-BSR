@@ -70,7 +70,7 @@ class DPTDFNet(nn.Module):
             nn.ReLU(),
         )
 
-        f = self.dim_f
+        f = self.num_bands
         c = g
 
         # 关键修改：final_conv的输出通道数应该与band模块的out_channels匹配
@@ -152,17 +152,8 @@ class DPTDFNet(nn.Module):
 
         x = self.final_conv(x)  # [batch, hidden_channels, num_bands, time]
 
-        # 关键修改：确保维度正确
-        # 检查bands维度是否匹配
-        if x.shape[2] != self.num_bands:
-            print(f"Warning: Adjusting bands dimension from {x.shape[2]} to {self.num_bands}")
-            # 使用插值调整bands维度
-            x = torch.nn.functional.interpolate(x, size=(self.num_bands, x.shape[3]), mode='nearest')
-
-        x = x.permute([0, 2, 3, 1])  # B, F, T, C → [batch, num_bands, time, hidden_channels]
-
-        print(f"Before unsplit: x.shape={x.shape}, expected bands={self.num_bands}, channels={self.band.out_channels}")
-
+        x=x.permute([0, 1, 3, 2])  # B, C, T, F → [batch, hidden_channels, time, num_bands]
+        
         x = self.band.unsplit(x)
         x = self.fourier.istft(x.contiguous(), origianl_length)
 
