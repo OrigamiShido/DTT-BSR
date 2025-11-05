@@ -108,12 +108,12 @@ class DPTDFNet(nn.Module):
             self.us.insert(0,UpSamplingBlock(c,g,scale,bn_norm))
 
         self.bottleneck_block1 = T_BLOCK(c, c, l, f, k, bn, bn_norm, bias=bias)
-        self.bottleneck_block2 = RoPETransformer(c,**RoPEParams)
-        # self.bottleneck_block2 = BandSequenceModelModule(
-        #     **bandsequence,
-        #     input_dim_size=c,
-        #     hidden_dim_size=2*c
-        # )
+        self.bottleneck_block3 = RoPETransformer(c,**RoPEParams)
+        self.bottleneck_block2 = BandSequenceModelModule(
+            **bandsequence,
+            input_dim_size=c,
+            hidden_dim_size=2*c
+        )
 
     def forward(self, x):
         '''
@@ -144,9 +144,11 @@ class DPTDFNet(nn.Module):
         # print(f"bottleneck in: {x.shape}")
         x = self.bottleneck_block1(x)
 
+        x=self.bottleneck_block2(x)
+
         x=x.permute([0,2,3,1])# B,T,F,C
 
-        x = self.bottleneck_block2(x)
+        x = self.bottleneck_block3(x)
 
         x=x.permute([0,3,1,2])# B,C,T,F
 
