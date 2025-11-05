@@ -3,14 +3,9 @@ import torch
 
 from models.DTTNet.dp_tdf.modules import TFC_TDF, TFC_TDF_Res1, TFC_TDF_Res2
 from models.DTTNet.dp_tdf.bandsequence import BandSequenceModelModule
-
-from models.DTTNet.layers import (get_norm)
-
-from models.DTTNet.dp_tdf.SnM import SplitModule,SplitAndMerge
-
-# from models.DTTNet.dp_tdf.abstract import AbstractModel
-
-from modules.spectral_ops import Fourier, Band
+from models.DTTNet.layers import get_norm
+from models.DTTNet.dp_tdf.SnM import SplitAndMerge
+from modules.spectral_ops import Fourier
 
 class DPTDFNet(nn.Module):
     def __init__(self,
@@ -32,7 +27,6 @@ class DPTDFNet(nn.Module):
                  **kwargs):
 
         super().__init__()
-        # self.save_hyperparameters()
 
         self.num_blocks = num_blocks
         self.l = l
@@ -64,8 +58,10 @@ class DPTDFNet(nn.Module):
         else:
             raise ValueError(f"Unknown block type {block_type}")
 
+        first_in_channels = self.dim_c_in
+
         self.first_conv = nn.Sequential(
-            nn.Conv2d(in_channels=self.dim_c_in, out_channels=g, kernel_size=(1, 1)),
+            nn.Conv2d(in_channels=first_in_channels, out_channels=g, kernel_size=(1, 1)),
             get_norm(bn_norm, g),
             nn.ReLU(),
         )
@@ -79,19 +75,21 @@ class DPTDFNet(nn.Module):
 
         self.fourier = Fourier(n_fft=n_fft, hop_length=hop_length)
 
-        self.num_bands=64
-        self.band = Band(sr=sample_rate, n_fft=n_fft, bands_num=self.num_bands, in_channels=2, out_channels=hidden_channels, scale='mel')
-
         self.encoding_blocks = nn.ModuleList()
         self.ds = nn.ModuleList()
-
         self.decoding_blocks = nn.ModuleList()
         self.us = nn.ModuleList()
 
         for i in range(self.n):
             c_in = c
 
-            self.encoding_blocks.append(SplitAndMerge(c_in,c,f,n_band,bn_norm,l,l,bn,k,bias=bias))
+            n_groups = 1
+
+            layer_k = 3 if (i == 0 or i == self.n - 1) else k
+
+            self.encoding_blocks.append(
+                SplitAndMerge(c_in, c, f, n_groups, bn_norm, n_split_en=l, n_split_de=1, bn=bn, k=layer_k, bias=bias)
+            )
             self.ds.append(
                 nn.Sequential(
                     nn.Conv2d(in_channels=c, out_channels=c + g, kernel_size=scale, stride=scale),
@@ -100,37 +98,32 @@ class DPTDFNet(nn.Module):
                 )
             )
 
+            self.decoding_blocks.insert(
+                0, SplitAndMerge(c, c, f, n_groups, bn_norm, n_split_en=1, n_split_de=1, bn=bn, k=layer_k, bias=bias)
+            )
 
-            self.decoding_blocks.insert(0,SplitAndMerge(c,c,f,n_band,bn_norm,l,l,bn,k,bias=bias))
             f = f // 2
             c += g
 
-            self.us.insert(0,UpSamplingBlock(c,g,scale,bn_norm))
+            self.us.insert(0, UpSamplingBlock(c, g, scale, bn_norm))
 
-        self.bottleneck_block1 = SplitAndMerge(c,c,f,n_band,bn_norm,l,l,bn,k,bias=bias)
+        n_groups_bottleneck = 1
+
+        self.bottleneck_block1 = SplitAndMerge(
+            c, c, f, n_groups_bottleneck, bn_norm, n_split_en=l, n_split_de=1, bn=bn, k=3, bias=bias
+        )
         self.bottleneck_block2 = BandSequenceModelModule(
             **bandsequence,
             input_dim_size=c,
-            hidden_dim_size=2*c
+            hidden_dim_size=2 * c
         )
 
     def forward(self, x):
-        '''
-        Args:
-            x: (batch, c*2, 2048, 256)
-        '''
-
-        # x=self.stft(x)
-
-        origianl_length=x.shape[-1]
-        x=self.fourier.stft(x)# B,F,T,C
-        # x=x.permute([0,3,1,2])  # B,C,F,T
-        x=self.band.split(x)#B,C,T,F
-
-        x=x.permute([0,1,3,2])# B,C,F,T
+        original_length = x.shape[-1]
+        sp = self.fourier.stft(x)
+        x = sp.permute([0, 3, 1, 2])
 
         x = self.first_conv(x)
-
         x = x.transpose(-1, -2)
 
         ds_outputs = []
@@ -139,36 +132,33 @@ class DPTDFNet(nn.Module):
             ds_outputs.append(x)
             x = self.ds[i](x)
 
-        # print(f"bottleneck in: {x.shape}")
         x = self.bottleneck_block1(x)
         x = self.bottleneck_block2(x)
 
         for i in range(self.n):
-            x = self.us[i](x,output_size=ds_outputs[-i - 1].shape)
-            # print(f"us{i} in: {x.shape}")
-            # print(f"ds{i} out: {ds_outputs[-i - 1].shape}")
+            x = self.us[i](x, output_size=ds_outputs[-i - 1].shape)
             x = x * ds_outputs[-i - 1]
             x = self.decoding_blocks[i](x)
 
         x = x.transpose(-1, -2)
-
         x = self.final_conv(x)
+        x = x.permute([0, 2, 3, 1])
 
-        x=x.permute([0,2,3,1])  # B,F,T,C
-        # x=self.band.unsplit(x)
-        x=self.fourier.istft(x.contiguous(),origianl_length)
+        x = self.fourier.istft(x.contiguous(), original_length)
 
         return x
 
 class UpSamplingBlock(nn.Module):
-    def __init__(self,c,g,scale,bn_norm):
+    def __init__(self, c, g, scale, bn_norm):
         super().__init__()
-        self.conv=nn.ConvTranspose2d(in_channels=c, out_channels=c - g, kernel_size=scale, stride=scale)
-        self.norm=get_norm(bn_norm, c - g)
-        self.relu=nn.ReLU()
+        self.conv = nn.ConvTranspose2d(
+            in_channels=c, out_channels=c - g, kernel_size=scale, stride=scale
+        )
+        self.norm = get_norm(bn_norm, c - g)
+        self.relu = nn.ReLU()
 
-    def forward(self, x,output_size):
-        x=self.conv(x,output_size=output_size)
-        x=self.norm(x)
-        x=self.relu(x)
+    def forward(self, x, output_size):
+        x = self.conv(x, output_size=output_size)
+        x = self.norm(x)
+        x = self.relu(x)
         return x
