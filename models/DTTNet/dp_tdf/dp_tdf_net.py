@@ -7,6 +7,8 @@ from models.DTTNet.dp_tdf.bandsequence import BandSequenceModelModule
 from models.DTTNet.dp_tdf.RoPETransformer import RoPETransformer
 
 from models.DTTNet.layers import (get_norm)
+# from models.DTTNet.dp_tdf.abstract import AbstractModel
+
 from modules.spectral_ops import Fourier, Band
 
 class DPTDFNet(nn.Module):
@@ -62,27 +64,23 @@ class DPTDFNet(nn.Module):
         else:
             raise ValueError(f"Unknown block type {block_type}")
 
-        # 关键修改：确保num_bands与band模块一致
-        self.num_bands = 128  # 固定为64，与band模块匹配
-        self.band = Band(sr=sample_rate, n_fft=n_fft, bands_num=self.num_bands,
-                        in_channels=2, out_channels=hidden_channels, scale='mel')
-
         self.first_conv = nn.Sequential(
-            nn.Conv2d(in_channels=hidden_channels, out_channels=g, kernel_size=(1, 1)),
+            nn.Conv2d(in_channels=self.dim_c_in, out_channels=g, kernel_size=(1, 1)),
             get_norm(bn_norm, g),
             nn.ReLU(),
         )
 
-        f = self.num_bands
+        f = self.dim_f
         c = g
 
-        # 关键修改：final_conv的输出通道数应该与band模块的out_channels匹配
-        # 并且需要确保输出的bands维度正确
         self.final_conv = nn.Sequential(
-            nn.Conv2d(in_channels=c, out_channels=hidden_channels, kernel_size=(1, 1)),
+            nn.Conv2d(in_channels=c, out_channels=self.dim_c_out, kernel_size=(1, 1)),
         )
 
         self.fourier = Fourier(n_fft=n_fft, hop_length=hop_length)
+
+        self.num_bands=64
+        self.band = Band(sr=sample_rate, n_fft=n_fft, bands_num=self.num_bands, in_channels=2, out_channels=hidden_channels, scale='mel')
 
         self.encoding_blocks = nn.ModuleList()
         self.ds = nn.ModuleList()
@@ -102,11 +100,12 @@ class DPTDFNet(nn.Module):
                 )
             )
 
-            self.decoding_blocks.insert(0, T_BLOCK(c, c, l, f, k, bn, bn_norm, bias=bias))
+
+            self.decoding_blocks.insert(0,T_BLOCK(c, c, l, f, k, bn, bn_norm, bias=bias))
             f = f // 2
             c += g
 
-            self.us.insert(0, UpSamplingBlock(c, g, scale, bn_norm))
+            self.us.insert(0,UpSamplingBlock(c,g,scale,bn_norm))
 
         self.bottleneck_block1 = T_BLOCK(c, c, l, f, k, bn, bn_norm, bias=bias)
         self.bottleneck_block3 = RoPETransformer(c,**RoPEParams)
@@ -122,21 +121,14 @@ class DPTDFNet(nn.Module):
             x: (batch, c*2, 2048, 256)
         '''
 
-        origianl_length = x.shape[-1]
+        origianl_length=x.shape[-1]
+        x=self.fourier.stft(x)# B,F,T,C
 
-        # compute complex STFT (real,imag)
-        x = self.fourier.stft(x)  # expected shape (B, F, T, 2)
+        x=x.permute([0,3,1,2])  # B,C,F,T
 
-        # keep complex stft (real, imag) to preserve phase information
-        # sp has shape (B, F, T, 2) where last dim is (real, imag)
-        x = self.band.split(x)  # B, d, T, K (after split)
-        # x的形状应该是 [batch, hidden_channels, time, num_bands]
+        x = self.first_conv(x)
 
-        x = x.permute([0, 1, 3, 2])  # B, C, F, T → [batch, hidden_channels, num_bands, time]
-
-        x = self.first_conv(x)  # [batch, g, num_bands, time]
-
-        x = x.transpose(-1, -2)  # B, C, T, F → [batch, g, time, num_bands]
+        x = x.transpose(-1, -2)# B,C,T,F
 
         ds_outputs = []
         for i in range(self.n):
@@ -144,6 +136,7 @@ class DPTDFNet(nn.Module):
             ds_outputs.append(x)
             x = self.ds[i](x)
 
+        # print(f"bottleneck in: {x.shape}")
         x = self.bottleneck_block1(x)
 
         x=self.bottleneck_block2(x)
@@ -155,30 +148,31 @@ class DPTDFNet(nn.Module):
         x=x.permute([0,3,1,2])# B,C,T,F
 
         for i in range(self.n):
-            x = self.us[i](x, output_size=ds_outputs[-i - 1].shape)
+            x = self.us[i](x,output_size=ds_outputs[-i - 1].shape)
+            # print(f"us{i} in: {x.shape}")
+            # print(f"ds{i} out: {ds_outputs[-i - 1].shape}")
             x = x * ds_outputs[-i - 1]
             x = self.decoding_blocks[i](x)
 
-        x = x.transpose(-1, -2)  # B, C, F, T → [batch, g, num_bands, time]
+        x = x.transpose(-1, -2)
 
-        x = self.final_conv(x)  # [batch, hidden_channels, num_bands, time]
+        x = self.final_conv(x)
 
-        x=x.permute([0, 1, 3, 2])  # B, C, T, F → [batch, hidden_channels, time, num_bands]
-
-        x = self.band.unsplit(x)
-        x = self.fourier.istft(x.contiguous(), origianl_length)
+        x=x.permute([0,2,3,1])  # B,F,T,C
+        # x=self.band.unsplit(x)
+        x=self.fourier.istft(x.contiguous(),origianl_length)
 
         return x
 
 class UpSamplingBlock(nn.Module):
-    def __init__(self, c, g, scale, bn_norm):
+    def __init__(self,c,g,scale,bn_norm):
         super().__init__()
-        self.conv = nn.ConvTranspose2d(in_channels=c, out_channels=c - g, kernel_size=scale, stride=scale)
-        self.norm = get_norm(bn_norm, c - g)
-        self.relu = nn.ReLU()
+        self.conv=nn.ConvTranspose2d(in_channels=c, out_channels=c - g, kernel_size=scale, stride=scale)
+        self.norm=get_norm(bn_norm, c - g)
+        self.relu=nn.ReLU()
 
-    def forward(self, x, output_size):
-        x = self.conv(x, output_size=output_size)
-        x = self.norm(x)
-        x = self.relu(x)
+    def forward(self, x,output_size):
+        x=self.conv(x,output_size=output_size)
+        x=self.norm(x)
+        x=self.relu(x)
         return x
