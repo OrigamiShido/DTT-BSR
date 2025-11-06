@@ -121,15 +121,10 @@ class DPTDFNet(nn.Module):
             x: (batch, c*2, 2048, 256)
         '''
 
-        # x=self.stft(x)
-
         origianl_length=x.shape[-1]
         x=self.fourier.stft(x)# B,F,T,C
 
         x=x.permute([0,3,1,2])  # B,C,F,T
-
-        # x=self.band.split(x)#B,C,T,F
-        # x=x.permute([0,1,3,2])# B,C,F,T
 
         x = self.first_conv(x)
 
