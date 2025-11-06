@@ -33,7 +33,7 @@ def unwrap_generator_checkpoint(ckpt_path: str, output_path: str) -> None:
     torch.save(generator_state_dict, output_path)
 
 if __name__ == '__main__':
-    input_dir = "experiment/msrkit/DTTNet/checkpoints"
+    input_dir = "weights/DTTNet_ropernn"
     # find all .ckpt files in the input directory
     ckpt_files = glob.glob(os.path.join(input_dir, '*.ckpt'))
     for ckpt_file in ckpt_files:

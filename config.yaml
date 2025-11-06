@@ -33,6 +33,16 @@ model:
       bidirectional: True
       num_layers: 4
       n_heads: 2
+    RoPEParams:
+      depth: 2
+      dim_head: 64
+      heads: 8
+      time_transformer_depth: 2
+      freq_transformer_depth: 2
+      attn_dropout: 0.1
+      ff_dropout: 0.1
+      flash_attn: True
+
 
 discriminators:
   - name: "MultiFrequencyDiscriminator"
@@ -80,6 +90,6 @@ trainer:
   max_steps: 1000000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [6]
+  devices: [7]
   precision: 16-mixed
   save_dir: './experiment/'
