@@ -16,6 +16,7 @@ from models.SPManba import SPMamba
 from models.DTTNet.dp_tdf.dp_tdf_net import DPTDFNet
 from losses.gan_loss import GeneratorLoss, DiscriminatorLoss, FeatureMatchingLoss
 from losses.reconstruction_loss import MultiMelSpecReconstructionLoss
+from losses.reconstruction_loss import MultiComplexSpecReconstructionLoss
 
 from modules.discriminator.MultiPeriodDiscriminator import MultiPeriodDiscriminator
 from modules.discriminator.MultiScaleDiscriminator import MultiScaleDiscriminator
@@ -94,6 +95,7 @@ class MusicRestorationModule(pl.LightningModule):
         self.loss_disc_adv = DiscriminatorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
         self.loss_feat = FeatureMatchingLoss()
         self.loss_recon = MultiMelSpecReconstructionLoss(**loss_cfg['reconstruction_loss'])
+        self.loss_phase = MultiComplexSpecReconstructionLoss(**loss_cfg['phase_loss'])
         
     def _init_generator(self):
         model_cfg = self.hparams.model
@@ -149,11 +151,15 @@ class MusicRestorationModule(pl.LightningModule):
         # Feature Matching Loss
         loss_feat = self.loss_feat(real_fmaps, fake_fmaps)
 
+        # Phase Loss
+        loss_phase=self.loss_phase(generated, target)
+
         loss_cfg = self.hparams.losses
         g_loss = (
             loss_recon * loss_cfg['lambda_recon'] + 
             loss_adv * loss_cfg['lambda_gan'] + 
-            loss_feat * loss_cfg['lambda_feat']
+            loss_feat * loss_cfg['lambda_feat'] +
+            loss_phase * loss_cfg['lambda_phase']
         )
 
         opt_g.zero_grad()
@@ -164,6 +170,7 @@ class MusicRestorationModule(pl.LightningModule):
         self.log('train/loss_recon', loss_recon)
         self.log('train/loss_adv', loss_adv)
         self.log('train/loss_feat', loss_feat)
+        self.log('train/loss_phase', loss_phase)
         
         # Step schedulers
         sch_g, sch_d = self.lr_schedulers()

@@ -79,9 +79,6 @@ class DPTDFNet(nn.Module):
 
         self.fourier = Fourier(n_fft=n_fft, hop_length=hop_length)
 
-        self.num_bands=64
-        self.band = Band(sr=sample_rate, n_fft=n_fft, bands_num=self.num_bands, in_channels=2, out_channels=hidden_channels, scale='mel')
-
         self.encoding_blocks = nn.ModuleList()
         self.ds = nn.ModuleList()
 

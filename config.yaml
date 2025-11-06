@@ -1,16 +1,6 @@
 project_name: "msrkit"
 exp_name: "melroformer_vocal_restoration"
 
-#model:
-#  name: "MelRoFormer"
-#  params:
-#    hidden_channels: 128
-#    num_layers: 12
-#    num_heads: 4
-#    window_size: 2048
-#    hop_size: 512
-#    sample_rate: 48000
-
 model:
   name: "DTTNet"
   params:
@@ -78,18 +68,24 @@ scheduler:
 losses:
   gan_type: 'lsgan'
   lambda_recon: 45.0
-  lambda_feat: 4.0
+  lambda_feat: 15.0
   lambda_gan: 2.0
+  lambda_phase: 45.0
   reconstruction_loss:
     sample_rate: 48000
     n_fft: [1024, 2048, 512]
     hop_length: [256, 512, 128]
     n_mels: [80, 160, 40]
+  phase_loss:
+    n_fft: [1024, 2048, 512]
+    hop_length: [256, 512, 128]
+    alpha: 0.9
+
 
 trainer:
   max_steps: 1000000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [7]
+  devices: [6]
   precision: 16-mixed
   save_dir: './experiment/'
