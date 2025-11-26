@@ -46,10 +46,11 @@ class MultiMelSpecReconstructionLoss(nn.Module):
         return loss
 
 class ComplexSpecReconstructionLoss(nn.Module):
-    def __init__(self, n_fft: int = 1024, hop_length: int = 512):
+    def __init__(self, n_fft: int = 1024, hop_length: int = 512, alpha=0.5):
         super().__init__()
         self.n_fft = n_fft
         self.hop_length = hop_length
+        self.alpha=alpha
 
     def forward(self, y_hat: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         eps = torch.finfo(torch.float32).eps
@@ -64,7 +65,7 @@ class ComplexSpecReconstructionLoss(nn.Module):
             y_flat, n_fft=self.n_fft, hop_length=self.hop_length,
             window=window, return_complex=True
         )
-        loss = (est_spec.abs() - target_spec.abs()).abs().mean() / (target_spec.abs().mean() + eps)
+        loss=torch.norm(est_spec - target_spec, p='fro')**2
         return loss
 
 class MultiComplexSpecReconstructionLoss(nn.Module):
@@ -72,11 +73,13 @@ class MultiComplexSpecReconstructionLoss(nn.Module):
         self,
         n_fft: list = [32, 64, 128, 256, 512, 1024, 2048],
         hop_length: list = None,
+        alpha=0.5,# 相位在这个loss中的比重
     ):
         super().__init__()
         if hop_length is None:
             hop_length = [n // 2 for n in n_fft]
         assert len(n_fft) == len(hop_length), "n_fft and hop_length must have the same length"
+        self.alpha=alpha
         self.spec_losses = nn.ModuleList([
             ComplexSpecReconstructionLoss(n_f, h_l)
             for n_f, h_l in zip(n_fft, hop_length)
@@ -94,8 +97,10 @@ class WaveformReconstructionLoss(nn.Module):
         super().__init__()
         self.n_fft = n_fft
         self.hop_length = hop_length
+        self.loss_fn=torch.nn.MSELoss()
 
     def forward(self, y_hat: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        # loss = self.loss_fn(y_hat, y)
         loss = torch.nn.functional.l1_loss(y_hat, y)
         return loss
 

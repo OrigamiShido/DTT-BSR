@@ -1,15 +1,5 @@
-project_name: "msrkit"
+project_name: "msrkit-dttnet-original"
 exp_name: "melroformer_vocal_restoration"
-
-#model:
-#  name: "MelRoFormer"
-#  params:
-#    hidden_channels: 128
-#    num_layers: 12
-#    num_heads: 4
-#    window_size: 2048
-#    hop_size: 512
-#    sample_rate: 48000
 
 model:
   name: "DTTNet"
@@ -90,6 +80,6 @@ trainer:
   max_steps: 1000000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [7]
+  devices: [5]
   precision: 16-mixed
   save_dir: './experiment/'
