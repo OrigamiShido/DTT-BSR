@@ -11,10 +11,10 @@ import numpy as np
 from tqdm import tqdm
 
 from models import MelRNN, MelRoFormer, UNet
-from models.SPManba import SPMamba
+# from models.SPManba import SPMamba
 from models.DTTNet.dp_tdf.dp_tdf_net import DPTDFNet
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = 'cuda') -> nn.Module:
     """Initialize and load the generator model from unwrapped checkpoint."""
@@ -27,8 +27,8 @@ def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = '
         generator = MelRoFormer.MelRoFormer(**model_cfg['params'])
     elif model_cfg['name'] == 'MelUNet':
         generator = UNet.MelUNet(**model_cfg['params'])
-    elif model_cfg['name'] == 'SPMamba':
-        generator = SPMamba(**model_cfg['params'])
+    # elif model_cfg['name'] == 'SPMamba':
+    #     generator = SPMamba(**model_cfg['params'])
     elif model_cfg['name'] == 'DTTNet':
         generator = DPTDFNet(**model_cfg['params'])
     else:

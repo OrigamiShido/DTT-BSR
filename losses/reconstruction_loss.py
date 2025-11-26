@@ -65,9 +65,7 @@ class ComplexSpecReconstructionLoss(nn.Module):
             y_flat, n_fft=self.n_fft, hop_length=self.hop_length,
             window=window, return_complex=True
         )
-        loss_mag = (est_spec.abs() - target_spec.abs()).abs().mean() / (target_spec.abs().mean() + eps)
-        loss_phase= (est_spec.angle() - target_spec.angle()).abs().mean() / (target_spec.angle().abs().mean() + eps)
-        loss=self.alpha*loss_phase + (1-self.alpha)*loss_mag
+        loss=torch.norm(est_spec - target_spec, p='fro')**2
         return loss
 
 class MultiComplexSpecReconstructionLoss(nn.Module):
@@ -99,8 +97,10 @@ class WaveformReconstructionLoss(nn.Module):
         super().__init__()
         self.n_fft = n_fft
         self.hop_length = hop_length
+        self.loss_fn=torch.nn.MSELoss()
 
     def forward(self, y_hat: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        # loss = self.loss_fn(y_hat, y)
         loss = torch.nn.functional.l1_loss(y_hat, y)
         return loss
 

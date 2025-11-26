@@ -45,7 +45,7 @@ class MelRNN(nn.Module):
         return x
 
 if __name__ == "__main__":
-    model = MelRNN(hidden_channels=128, num_layers=9, num_groups=8, window_size=2048, hop_size=512, sample_rate=48000)
+    model = MelRNN(hidden_channels=128, num_layers=4, num_groups=4, window_size=2048, hop_size=512, sample_rate=48000)
     
     x = torch.randn(4, 96000)
     

@@ -1,4 +1,4 @@
-project_name: "msrkit"
+project_name: "msrkit-dttnet-original"
 exp_name: "melroformer_vocal_restoration"
 
 model:
@@ -68,24 +68,18 @@ scheduler:
 losses:
   gan_type: 'lsgan'
   lambda_recon: 45.0
-  lambda_feat: 15.0
+  lambda_feat: 4.0
   lambda_gan: 2.0
-  lambda_phase: 45.0
   reconstruction_loss:
     sample_rate: 48000
     n_fft: [1024, 2048, 512]
     hop_length: [256, 512, 128]
     n_mels: [80, 160, 40]
-  phase_loss:
-    n_fft: [1024, 2048, 512]
-    hop_length: [256, 512, 128]
-    alpha: 0.9
-
 
 trainer:
   max_steps: 1000000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [6]
+  devices: [5]
   precision: 16-mixed
   save_dir: './experiment/'

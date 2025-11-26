@@ -43,7 +43,7 @@ class MelUNet(nn.Module):
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = MelUNet(hidden_channels=32, num_layers=4, upsampling_factor=2, window_size=2048, hop_size=512, sample_rate=48000)
+    model = MelUNet(hidden_channels=64, num_layers=4, upsampling_factor=2, window_size=2048, hop_size=512, sample_rate=48000)
     
     x = torch.randn(4, 96000)
     x = x.to(device)
