@@ -1,0 +1,85 @@
+project_name: "msrkit-dttnet-original-percussion"
+exp_name: "melroformer_vocal_restoration"
+
+model:
+  name: "DTTNet"
+  params:
+    dim_f: 1025
+    n_fft: 2048
+    hop_length: 512
+    audio_ch: 1
+    block_type: TFC_TDF_Res2
+    num_blocks: 5
+    l: 3
+    g: 32
+    k: 3
+    bn: 2
+    bias: False
+    bn_norm: BN
+    sample_rate: 48000
+    hidden_channels: 128
+    bandsequence:
+      rnn_type: LSTM
+      bidirectional: True
+      num_layers: 4
+      n_heads: 2
+    RoPEParams:
+      depth: 2
+      dim_head: 64
+      heads: 8
+      time_transformer_depth: 2
+      freq_transformer_depth: 2
+      attn_dropout: 0.1
+      ff_dropout: 0.1
+      flash_attn: True
+
+
+discriminators:
+  - name: "MultiFrequencyDiscriminator"
+    params:
+      nch: 1
+      window_sizes: [2048, 1024, 512]
+      sample_rate: 48000
+      norm: True
+
+data:
+  sample_rate: 48000
+  clip_duration: 3.0
+  train_dataset:
+    target_stem: "Rhy_PERC"
+    root_directory: "/home/student/shihongtan/database/RawStem/"
+    apply_augmentation: True
+    snr_range: [0.0, 10.0]
+  dataloader_params:
+    batch_size: 2
+    num_workers: 8
+
+optimizer_g:
+  lr: 0.0002
+  betas: [0.8, 0.99]
+
+optimizer_d:
+  lr: 0.0002
+  betas: [0.8, 0.99]
+
+scheduler:
+  warm_up_steps: 10000
+
+losses:
+  gan_type: 'lsgan'
+  lambda_recon: 45.0
+  lambda_feat: 4.0
+  lambda_gan: 2.0
+  reconstruction_loss:
+    sample_rate: 48000
+    n_fft: [1024, 2048, 512]
+    hop_length: [256, 512, 128]
+    n_mels: [80, 160, 40]
+
+trainer:
+  max_steps: 1000000
+  log_every_n_steps: 100
+  checkpoint_save_interval: 10000
+  devices: [3]
+  precision: 16-mixed
+  save_dir: './experiment/'
