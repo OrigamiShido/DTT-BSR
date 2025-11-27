@@ -1,12 +1,18 @@
-# MSRKit-WHU
+# DTT-BSR
 
-This is a repository of Team AC/DC, Wuhan University participating the ICASSP 2026 MSR Challenge.
+Team AC/DC (Wuhan University)
+
+ICASSP 2026 Music Source Restoration Challenge
 
 ## System Description
 
 ### Directory Structure
 
-We generally inherit the baseline GAN framework, replacing the generator module of our own proposed compose model.
+Our system builds on the official MSR baseline GAN framework. The discriminator architecture and loss formulation are kept identical to the baseline; all architectural changes are confined to the generator’s time–frequency modeling.
+
+The official baseline implementation is provided in the MSRKit repository. In our submission, the baseline generator is replaced by a DTTNet-based architecture adapted from prior work [2]. On the generator side, we adopt this DTTNet-style time–frequency U-Net operating on complex STFTs, and further augment it at the bottleneck with a BandSplitRNN-inspired band-sequence recurrent module and a RoPE-based Transformer to jointly capture long-range dependencies along both time and frequency while preserving the original dual-path TFC‑TDF structure. We refer to this enhanced generator as **DTT-BSR** (DTTNet with BandSequence and RoPE).
+
+On the discriminator side, we reuse the baseline Multi-Frequency Discriminator and the standard combination of reconstruction, adversarial, and feature-matching losses. 
 
 The repository directory structure is:
 
@@ -33,110 +39,175 @@ We inherit the baseline GAN framework, only modified the generator and discrimin
 
 ![system](./system.png)
 
-Inspired by [1],[2] and [3], we propose a generator model based on DTTNet[2], with modifications similar to [1] and [4], we choose to use STFT spectrum as input giving consideration to precision of reconstruction of non-vocal stems. Instead of replacing the Dual-Path RNN module, we choose to add the RoPE Transformer module to introduce attention mechanism while increasing the overall parameter amount, which we hope to balance phase reconstruction and enabling long-term relevant information preservation, ensuring a better time generalization ability.
+We build our generator on top of DTTNet [2], a lightweight dual-path TFC‑TDF U‑Net originally proposed for music source separation, and adapt it to the MSR setting with additional sequence-modeling modules; the resulting architecture is what we call **DTT-BSR**:
 
-#### Discriminator
+- **Time–Frequency Front-End**  
+  Input waveforms are transformed into complex STFTs (e.g., `n_fft = 2048`, `hop = 512`). Real and imaginary parts are treated as separate channels, which allows the model to jointly refine magnitude and phase.
 
-We use the baseline Multi Frequency Discriminator.
+- **TFC‑TDF Encoder–Decoder**  
+  The backbone consists of stacked TFC_TDF_Res2 blocks that alternate between temporal–frequency convolution (TFC) and time-distributed depthwise filtering (TDF). This structure captures both local time–frequency patterns and broader spectral correlations while remaining parameter-efficient.
 
-### Dataset Preparation
+- **Band-Sequence Modeling (Across Frequency and Time)**  
+  At the bottleneck, we feed the encoded features into a Improved Dual-Path module derived from BandSplitRNN. The frequency axis is viewed as multiple subbands, and grouped bi-directional RNNs are applied alternately along the time and subband dimensions, with residual connections and group normalization. This design explicitly models correlations across subbands and over time, which is particularly important for non-vocal stems where harmonic structures and broadband artifacts are tightly coupled.
 
-For now we only use RawStem[3].
+- **RoPE Transformer Bottleneck**  
+  At the bottleneck, we insert a RoPE-based Transformer block. Rotary Position Embeddings enable the attention mechanism to handle long sequences while preserving relative phase information. This module lets the generator attend over long time spans and frequency ranges, improving temporal consistency and phase reconstruction.
 
-### Hyperparameters
+- **Waveform Reconstruction**  
+  The decoder mirrors the encoder with learned upsampling and skip connections. The network predicts a complex-valued residual or mask over the STFT, which is then transformed back to the waveform domain using inverse STFT.
 
-We set $N_{blocks}$=2 to balance parameter compression and model performance, and we set
+All architectural details (number of blocks, hidden dimensions, LSTM depth, attention heads, etc.) are configurable via `config.yaml`.
 
-```yaml
-model:
-  name: "DTTNet"
-  params:
-    dim_f: 1025
-    n_fft: 2048
-    hop_length: 512
-    audio_ch: 1
-    block_type: TFC_TDF_Res2
-    num_blocks: 5
-    l: 3
-    g: 32
-    k: 3
-    bn: 2
-    bias: False
-    bn_norm: BN
-    sample_rate: 48000
-    hidden_channels: 128
-    bandsequence:
-      rnn_type: LSTM
-      bidirectional: True
-      num_layers: 4
-      n_heads: 2
-    RoPEParams:
-      depth: 2
-      dim_head: 64
-      heads: 8
-      time_transformer_depth: 2
-      freq_transformer_depth: 2
-      attn_dropout: 0.1
-      ff_dropout: 0.1
-      flash_attn: True
-```
+#### Discriminator and Objectives
 
-Detailed hyperparameters can be accessed at `./config_{stem}.yaml`.
+We use the baseline **Multi-Frequency Discriminator (MFD)**:
 
-### Loss Function
+- Multiple sub-discriminators, each operating on STFTs computed with different window sizes, analyze the signal at several time–frequency resolutions.
+- Real and generated signals are passed through the same MFD ensemble, and their outputs as well as intermediate feature maps are used for adversarial and feature-matching losses.
 
-we inherently use the baseline 3 loss functions: Reconstruction Loss, Adversarial Loss and Feature Matching Loss.
+We keep the discriminator architecture, its hyperparameters, and the loss formulation (LSGAN-style adversarial loss, multi-scale mel reconstruction, and feature matching with baseline weighting) identical to the official MSR baseline, so that performance gains can be attributed to the generator enhancements.
 
-## Accessible Code Link
+The training objective combines:
 
-We only distribute the code at [OrigamiShido/MSRKit-WHU: Model Implementations, Evaluation Scripts, etc. for Music Source Restoration Challenge 2025.](https://github.com/OrigamiShido/MSRKit-WHU) and our model at [OrigamiShido/MSRChallenge-ACDC · Hugging Face](https://huggingface.co/OrigamiShido/MSRChallenge-ACDC).
+- **Multi-scale mel reconstruction loss** to enforce fidelity in the time–frequency domain.
+- **LSGAN adversarial loss** to encourage perceptually realistic outputs.
+- **Feature-matching loss** to stabilize training and align internal discriminator statistics.
 
-## Instructions for Reproducing
+The relative weights of these terms are chosen to prioritize reconstruction quality while preserving adversarial sharpness; the exact settings are specified in `config.yaml`.
 
-1. Download the code from our repository and install the dependencies.
+### Dataset and Trining Protocol
+
+- **Dataset**  
+  We train on the RawStem dataset, resampled to 48 kHz. Training examples are 3-second clips constructed by mixing target stems with distractor stems at random SNRs in the range [0, 10] dB. The target stem (e.g., `Voc`) and the root directory of RawStem are set via `data.*` entries in `config.yaml`.
+
+- **Augmentation and Sampling**  
+  We optionally apply stem- and mixture-level augmentations (e.g., gain perturbation, random mixing) to improve robustness. Clip start times are sampled such that the selected segments are non-silent according to precomputed RMS statistics when available.
+
+- **Optimization**  
+  The model is trained with AdamW and a warm-up schedule, using mixed precision and frequent checkpointing. A single set of hyperparameters is shared across all target stems (no target-specific tuning). Training is implemented in PyTorch Lightning (`train.py`), which also manages logging and checkpoint saving under `./experiment/{project}/{model}/`.
+
+## Public Code and Pretrained Weights
+
+- **Code repository**  
+  MSRKit-WHU implementation, training pipeline, and evaluation scripts:  
+  https://github.com/OrigamiShido/DTT-BSR
+
+- **Pretrained models and configs**  
+  Pretrained generator weights and the exact configuration files used for submission:  
+  https://huggingface.co/OrigamiShido/MSRChallenge-ACDC
+
+## Reproduction Guide
+
+The steps below reproduce our system and evaluation results.
+
+### Environment Setup
 
 ```bash
-git clone https://github.com/OrigamiShido/MSRKit-WHU.git
-cd MSRKit-WHU
+git clone https://github.com/OrigamiShido/DTT-BSR.git
+cd DTT-BSR
 pip install -r requirements.txt
+
+# Optional: install CLAP for FAD-CLAP metric
+pip install laion-clap
 ```
 
-2. Download our distributed weights and configs at [OrigamiShido/MSRChallenge-ACDC · Hugging Face](https://huggingface.co/OrigamiShido/MSRChallenge-ACDC)
-3. Start Inference process.
+### Data Preparation
 
-```bash
-python inference.py --config config.yaml --checkpoint path/to/your/checkpoint.ckpt --input_dir path/to/your/input/directory --output_dir path/to/your/output/directory
-```
+1. Download the RawStem dataset and place it under a directory of your choice, e.g. `/path/to/RawStem`.
+2. Edit `config.yaml`:
+   - Set `data.train_dataset.root_directory` to `/path/to/RawStem`.
+   - Set `data.train_dataset.target_stem` to the desired stem (e.g. `"Voc"`).
+   - Adjust batch size, number of workers, and augmentation options as needed.
 
-2. Calculate the Metrics.
+### Training from Scratch (Optional)
 
-```bash
-python calculate_metrics.py {file list}
-```
-
-Or you can try to train this model:
+To train the model from scratch with the provided configuration:
 
 ```bash
 python train.py --config config.yaml
 ```
 
-And try to find the best model:
+Checkpoints will be saved under:
 
-```bash
-python evaluate_models.py --models_dir path/to/the/checkpoint.pth --config path/to/the/config.yaml --val_dir path/to/the/mixture/dir/ --target_dir /path/to/the/target/dir --mode suffix --suffixes DT0 --device cuda --metrics_device cuda --ranking_metric mel_snr --work_dir evaluate/save/dir --pipeline_mode full > result.txt
+```text
+./experiment/{project_name}/{model_name}/checkpoints/
 ```
 
-## Special Thanks
+To export the generator-only weights from a Lightning checkpoint:
 
-We want to express our sincere appreciation to Prof. Gongping Huang, Prof. Zhongqiu Wang, Dr. Yuzhu Wang and Dr. Haohe Liu  for their guidance and attention.
+```bash
+python unwrap.py # need to modify the unwrap.py to change the path
+```
 
-## Reference
+### Inference with Pretrained Models
 
-[1] W.-T. Lu, J.-C. Wang, Q. Kong, and Y.-N. Hung, “Music Source Separation with Band-Split RoPE Transformer,” Sept. 10, 2023, *arXiv*: arXiv:2309.02612. doi: [10.48550/arXiv.2309.02612](https://doi.org/10.48550/arXiv.2309.02612).
+You can either use the pretrained generators from Hugging Face or a generator exported via `unwrap.py`:
 
-[2] J. Chen, S. Vekkot, and P. Shukla, “Music Source Separation Based on a Lightweight Deep Learning Framework (DTTNET: DUAL-PATH TFC-TDF UNET),” in *ICASSP 2024 - 2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)*, Apr. 2024, pp. 656–660. doi: [10.1109/ICASSP48485.2024.10448020](https://doi.org/10.1109/ICASSP48485.2024.10448020).
+1. Visit our Hugging Face repository: https://huggingface.co/OrigamiShido/MSRChallenge-ACDC  
+   Download the generator weights (e.g. `generator.pth`) and the corresponding `config.yaml` used for submission, or use your own exported weights from the training step.
+2. Point `--checkpoint` to the downloaded/unwrapped generator file, and `--config` to the matching configuration file.
 
-[3] Y. Zang, Z. Dai, M. D. Plumbley, and Q. Kong, “Music Source Restoration,” May 27, 2025, *arXiv*: arXiv:2505.21827. doi: [10.48550/arXiv.2505.21827](https://doi.org/10.48550/arXiv.2505.21827).
+```bash
+python inference.py \
+  --config config.yaml \
+  --checkpoint path/to/generator.pth \
+  --input_dir path/to/input_flac_dir \
+  --output_dir path/to/output_dir \
+```
 
-[4] Yun-Ning, Hung, I. Pereira, and F. Korzeniowski, “Moises-Light: Resource-efficient Band-split U-Net For Music Source Separation,” Oct. 08, 2025, *arXiv*: arXiv:2510.06785. doi: [10.48550/arXiv.2510.06785](https://doi.org/10.48550/arXiv.2510.06785).
+All `.flac` files in `input_dir` will be processed and saved to `output_dir` with the same filenames.
+
+### Evaluation
+
+To evaluate SI-SNR and FAD-CLAP:
+
+1. Create a text file (e.g. `file_list.txt`) where each line has the format:
+
+```text
+/path/to/target.wav|/path/to/output.wav
+```
+
+2. Run the evaluation script:
+
+```bash
+python calculate_metrics.py file_list.txt --batch_size 16
+```
+
+The script prints per-pair SI-SNR scores, then computes the overall FAD-CLAP distance between the set of target and generated files (downloading CLAP weights if needed).
+
+### Model Selection (Best Checkpoint)
+
+For model selection on a validation set, we evaluate multiple checkpoints and rank them using a chosen metric (e.g. mel SNR). Assuming `evaluate_models.py` is available in the project root:
+
+```bash
+python evaluate_models.py \
+  --models_dir path/to/the/checkpoint_dir/ \
+  --config path/to/the/config.yaml \
+  --val_dir path/to/the/mixture/dir/ \
+  --target_dir /path/to/the/target/dir \
+  --mode suffix \
+  --suffixes DT0 \
+  --device cuda \
+  --metrics_device cuda \
+  --ranking_metric mel_snr \
+  --work_dir evaluate/save/dir \
+  --pipeline_mode full > result.txt
+```
+
+This script scores all specified checkpoints on the validation set, ranks them by the selected metric, and writes detailed results (including the best-performing model) to `result.txt`.
+
+---
+
+## Acknowledgements
+
+We would like to thank Prof. Gongping Huang, Prof. Zhongqiu Wang, Dr. Yuzhu Wang, and Dr. Haohe Liu for their guidance and support throughout this work.
+
+---
+
+## References
+
+[1] W.-T. Lu, J.-C. Wang, Q. Kong, and Y.-N. Hung, “Music Source Separation with Band-Split RoPE Transformer,” arXiv:2309.02612.  
+[2] J. Chen, S. Vekkot, and P. Shukla, “DTTNET: DUAL-PATH TFC-TDF UNET,” ICASSP 2024.  
+[3] Y. Zang, Z. Dai, M. D. Plumbley, and Q. Kong, “Music Source Restoration,” arXiv:2505.21827.  
+[4] Yun-Ning, Hung, I. Pereira, and F. Korzeniowski, “Moises-Light: Resource-efficient Band-split U-Net,” arXiv:2510.06785.
 
