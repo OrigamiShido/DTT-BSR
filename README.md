@@ -78,7 +78,7 @@ The relative weights of these terms are chosen to prioritize reconstruction qual
 ### Dataset and Trining Protocol
 
 - **Dataset**  
-  We train on the RawStem dataset, resampled to 48 kHz. Training examples are 3-second clips constructed by mixing target stems with distractor stems at random SNRs in the range [0, 10] dB. The target stem (e.g., `Voc`) and the root directory of RawStem are set via `data.*` entries in `config.yaml`.
+  We train on the RawStem[5] dataset, resampled to 48 kHz. Training examples are 3-second clips constructed by mixing target stems with distractor stems at random SNRs in the range [0, 10] dB. The target stem (e.g., `Voc`) and the root directory of RawStem are set via `data.*` entries in `config.yaml`.
 
 - **Augmentation and Sampling**  
   We optionally apply stem- and mixture-level augmentations (e.g., gain perturbation, random mixing) to improve robustness. Clip start times are sampled such that the selected segments are non-silent according to precomputed RMS statistics when available.
@@ -210,4 +210,6 @@ We would like to thank Prof. Gongping Huang, Prof. Zhongqiu Wang, Dr. Yuzhu Wang
 [2] J. Chen, S. Vekkot, and P. Shukla, “DTTNET: DUAL-PATH TFC-TDF UNET,” ICASSP 2024.  
 [3] Y. Zang, Z. Dai, M. D. Plumbley, and Q. Kong, “Music Source Restoration,” arXiv:2505.21827.  
 [4] Yun-Ning, Hung, I. Pereira, and F. Korzeniowski, “Moises-Light: Resource-efficient Band-split U-Net,” arXiv:2510.06785.
+[5] Y. Zang, Z. Dai, M. D. Plumbley, and Q. Kong, “Music Source Restoration,” arXiv: arXiv:2505.21827. doi: 10.48550/arXiv.2505.21827.
+
 
