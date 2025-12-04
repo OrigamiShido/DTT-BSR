@@ -1,28 +1,55 @@
-project_name: "msrkit-dttnet-original"
+project_name: "msrkit"
 exp_name: "melroformer_vocal_restoration"
 
+#model:
+#  name: "DTTNet"
+#  params:
+#    dim_f: 1025
+#    n_fft: 2048
+#    hop_length: 512
+#    audio_ch: 1
+#    block_type: TFC_TDF_Res2
+#    num_blocks: 5
+#    l: 3
+#    g: 32
+#    k: 3
+#    bn: 2
+#    bias: False
+#    bn_norm: BN
+#    sample_rate: 48000
+#    hidden_channels: 128
+#    bandsequence:
+#      rnn_type: LSTM
+#      bidirectional: True
+#      num_layers: 4
+#      n_heads: 2
+#    RoPEParams:
+#      depth: 2
+#      dim_head: 64
+#      heads: 8
+#      time_transformer_depth: 2
+#      freq_transformer_depth: 2
+#      attn_dropout: 0.1
+#      ff_dropout: 0.1
+#      flash_attn: True
+
 model:
-  name: "DTTNet"
+  name: "MoisesNet"
   params:
-    dim_f: 1025
+    dim_time: 1025
     n_fft: 2048
     hop_length: 512
-    audio_ch: 1
-    block_type: TFC_TDF_Res2
-    num_blocks: 5
-    l: 3
-    g: 32
-    k: 3
+    G: 32
     bn: 2
     bias: False
     bn_norm: BN
     sample_rate: 48000
-    hidden_channels: 128
-    bandsequence:
-      rnn_type: LSTM
-      bidirectional: True
-      num_layers: 4
-      n_heads: 2
+    N_band: 4
+    N_enc: 3
+    N_dec: 3
+    N_RoPE: 5
+    N_split_enc: 3
+    N_split_dec: 1
     RoPEParams:
       depth: 2
       dim_head: 64
@@ -47,7 +74,7 @@ data:
   clip_duration: 3.0
   train_dataset:
     target_stem: "Voc"
-    root_directory: "/home/student/shihongtan/database/RawStem/"
+    root_directory: "/home/shihongtan/database/RawStem/"
     apply_augmentation: True
     snr_range: [0.0, 10.0]
   dataloader_params:
@@ -80,6 +107,6 @@ trainer:
   max_steps: 1000000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [5]
+  devices: [6]
   precision: 16-mixed
   save_dir: './experiment/'

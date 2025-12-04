@@ -1,0 +1,27 @@
+model:
+  name: "DTTNet"
+  params:
+    dim_time: 1025
+    n_fft: 2048
+    hop_length: 512
+    G: 32
+    bn: 2
+    bias: False
+    bn_norm: BN
+    sample_rate: 48000
+    hidden_layers: 128
+    N_band: 4
+    N_enc: 3
+    N_dec: 1
+    N_RoPE: 5
+    N_split_enc: 3
+    N_split_dec: 1
+    RoPEParams:
+      depth: 2
+      dim_head: 64
+      heads: 8
+      time_transformer_depth: 2
+      freq_transformer_depth: 2
+      attn_dropout: 0.1
+      ff_dropout: 0.1
+      flash_attn: True

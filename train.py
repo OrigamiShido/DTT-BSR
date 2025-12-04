@@ -14,7 +14,7 @@ import torchaudio
 
 from data.dataset import RawStems, InfiniteSampler
 from models import MelRNN, MelRoFormer, UNet
-from models.SPManba import SPMamba
+from models.moises_light import MoisesNet
 from models.DTTNet.dp_tdf.dp_tdf_net import DPTDFNet
 from losses.gan_loss import GeneratorLoss, DiscriminatorLoss, FeatureMatchingLoss
 from losses.reconstruction_loss import MultiMelSpecReconstructionLoss
@@ -124,10 +124,10 @@ class MusicRestorationModule(pl.LightningModule):
             return MelRoFormer.MelRoFormer(**model_cfg['params'])
         elif model_cfg['name'] == 'MelUNet':
             return UNet.MelUNet(**model_cfg['params'])
-        elif model_cfg['name'] == 'SPMamba':
-            return SPMamba(**model_cfg['params'])
         elif model_cfg['name'] == 'DTTNet':
             return DPTDFNet(**model_cfg['params'])
+        elif model_cfg['name'] == 'MoisesNet':
+            return MoisesNet(**model_cfg['params'])
         else:
             raise ValueError(f"Unknown model name: {model_cfg['name']}")
 

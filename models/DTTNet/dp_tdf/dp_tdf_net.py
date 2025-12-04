@@ -9,7 +9,7 @@ from models.DTTNet.dp_tdf.RoPETransformer import RoPETransformer
 from models.DTTNet.layers import (get_norm)
 # from models.DTTNet.dp_tdf.abstract import AbstractModel
 
-from modules.spectral_ops import Fourier, Band
+from modules.spectral_ops import Fourier
 
 class DPTDFNet(nn.Module):
     def __init__(self,
@@ -118,7 +118,7 @@ class DPTDFNet(nn.Module):
             x: (batch, c*2, 2048, 256)
         '''
 
-        origianl_length=x.shape[-1]
+        original_length=x.shape[-1]
         x=self.fourier.stft(x)# B,F,T,C
 
         x=x.permute([0,3,1,2])  # B,C,F,T
@@ -157,7 +157,7 @@ class DPTDFNet(nn.Module):
 
         x=x.permute([0,2,3,1])  # B,F,T,C
         # x=self.band.unsplit(x)
-        x=self.fourier.istft(x.contiguous(),origianl_length)
+        x=self.fourier.istft(x.contiguous(),original_length)
 
         return x
 
