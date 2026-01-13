@@ -1,0 +1,14 @@
+
+numpy
+einops
+tqdm
+diffq
+ffmpeg-python
+julius
+imageio
+matplotlib
+sox
+SoundFile
+librosa==0.8.1
+torch
+wandb
