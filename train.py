@@ -104,7 +104,7 @@ def train(yaml_file=None):
 
     wandb.init(config=params)
     config = wandb.config
-    if config.start_epoch ==0: 
+    if config.start_epoch ==0:
         create_saves_directory(config.model_save_dir, config.debug)
     #global device
     #device = torch.device(f"cuda:{config.gpus[0]}" if torch.cuda.is_available() else "cpu")
@@ -112,7 +112,7 @@ def train(yaml_file=None):
     torch.manual_seed(config.random_seed)
 
     ModelSelector = ModelFactory(config, torch.optim.Adam)
-    
+
     netG = ModelSelector.generator().to(device)
     if config.multi_disc:
         netD, netD_spec = ModelSelector.discriminator()

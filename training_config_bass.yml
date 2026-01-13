@@ -1,0 +1,66 @@
+description: MSG Configuration Template for MSR with MSRBench Split
+exp_name: MSG Bass Enhancement with DTT-BSR Outputs
+id: msg_bass_msr
+parameters:
+  # Model Parameters
+  model: 'demucs'
+  source: 'bass'  # 针对 bass 源
+  use_mix: False
+  multi_disc: False
+  audio_channels: 1
+  debug: False
+  mono: True
+
+  # Directories
+  model_save_dir: ./checkpoints  # 保存模型的目录
+  model_load_dir:  # 加载预训练模型的目录（如果有）
+  train_sources_path: /home/student/nyr/data/MSG_Ready/train  # 划分后的 train 目录（DTT-BSR 输出）
+  valid_sources_path: /home/student/nyr/data/MSG_Ready/valid  # 划分后的 val 目录（或 unprocessed_stems/bass 作为 ground truth）
+
+  # Dataloader parameters
+  sample_rate: 48000  # 匹配 MSRBench 的 48 kHz
+  mix_folder: 'mixture'
+  segment_duration: 1
+  verbose: True
+  disable_save: False
+
+  # Training Hyperparameters
+  percent_gt: 10  # 10% 使用 ground truth（如果 valid 是 unprocessed）混合训练，避免过拟合
+  percent_mix: 0
+  percent_silent: 0
+  random_seed: 0
+  start_epoch: 0
+  pretrain_epoch: 0
+  n_epochs: 100
+  validation_epoch: 2
+  validation_song: mixture/11_DT0.flac
+  validation_song_start: 0
+  validation_song_end: 10
+  checkpoint_interval: 10
+  lstm_layers: 0
+  batch_size: 16  # 调整以适应 48 kHz 和数据集大小
+  n_cpu: 2
+  gpus: [4]
+  l1interval: 10
+  adv_autobalance_ratios: [1,1,1]
+  autobalance_off: 1000
+  adv_only: False
+  hifigan: True
+  use_both_reconstruction: True
+  augment: True  # 启用增强，处理降级变异
+  periods: [2,3,5,7,11]
+
+  # Optimizer Hyperparameters
+  lr: .0002
+  b1: .5
+  b2: .9
+
+  # Generator Hyperparameters
+  skip_cxn: True
+
+  # Evaluation Hyperparameters
+  hop_len: .1
+  test_sources_paths: /home/student/nyr/data/MSG_Ready/test  # 测试目录，用于最终评估
+  song_names: ['/home/student/nyr/data/MSG_Ready/test/mixture/0_DT0.flac', '/home/student/nyr/data/MSG_Ready/test/mixture/0_DT0.flac']
+  evaluation_models: ['bass_checkpoint.pth']
+start_time: '20260111_14_42_00'

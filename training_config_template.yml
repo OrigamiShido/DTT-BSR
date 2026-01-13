@@ -1,11 +1,11 @@
 description: MSG Configuration Template (with hyperparameters used for paper and saved checkpoints)
-exp_name: MSG Demo Config
-id: msg_demo
+exp_name: MSG Bass Enhancement Config
+id: msg_bass_demo
 parameters:
 
   # Model Parameters
   model: 'demucs'
-  source: # one of ['bass','drums','vocals','other']
+  source: 'bass'
   use_mix: False
   multi_disc: False
   audio_channels: 1
@@ -19,7 +19,7 @@ parameters:
   valid_sources_path: # Directory of training set
   
   # Dataloader parameters
-  sample_rate: 16000
+  sample_rate: 44100
   mix_folder: 'mixture'
   segment_duration: 1
   verbose: True
@@ -32,7 +32,7 @@ parameters:
   random_seed: 0
   start_epoch: 0
   pretrain_epoch: 0
-  n_epochs: 50
+  n_epochs: 100
   validation_epoch: 2
   validation_song: # Song in validation set to display in weights and biases
   validation_song_start: 20
@@ -48,7 +48,7 @@ parameters:
   adv_only: False
   hifigan: True
   use_both_reconstruction: True
-  augment: False
+  augment: True
   periods: [2,3,5,7,11]
 
 
@@ -64,5 +64,5 @@ parameters:
   hop_len: .1
   test_sources_paths: # Directory of test set
   song_names: # Songs to write MSG output of to listen
-  evaluation_models: # Models to evaluate on
-start_time: '20200225_20_43_41'
+  evaluation_models: ['bass_checkpoint.pth']# Models to evaluate on
+start_time: '20260111_14_42_00'

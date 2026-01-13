@@ -136,3 +136,17 @@ nohup.out
 *.png*
 *.wav*
 *.csv*
+
+datasets/
+checkpoints/
+checkpoints*/
+runs/
+outputflac/
+checkpointsbest_SDR_netG/
+checkpoints99netG/
+checkpoints39netG/
+bass29netG/
+MSGoutput/
+__pycache__/
+*.pth
+*.pt
