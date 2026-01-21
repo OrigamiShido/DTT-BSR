@@ -41,6 +41,7 @@ except ImportError as exc:  # pragma: no cover - informative message for missing
 
 from models import MelRNN, MelRoFormer, UNet
 from models.DTTNet.dp_tdf.dp_tdf_net import DPTDFNet
+from models.moises_light.moisesnet import MoisesNet
 
 AUDIO_EXTS = (".flac", ".wav")
 FAD_SAMPLE_RATE = 48000
@@ -65,6 +66,8 @@ def load_generator(config: Dict, checkpoint_path: Path, device: str) -> nn.Modul
         generator = UNet.MelUNet(**model_cfg["params"])
     elif model_cfg["name"] == "DTTNet":
         generator = DPTDFNet(**model_cfg["params"])
+    elif model_cfg["name"] == "MoisesNet":
+        generator = MoisesNet(**model_cfg["params"])
     else:
         raise ValueError(f"Unknown model name: {model_cfg['name']}")
 

@@ -13,6 +13,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 import torchaudio
 
 from data.dataset import RawStems, InfiniteSampler
+from data.compound import CompoundDataset
+
 from models import MelRNN, MelRoFormer, UNet
 from models.moises_light import MoisesNet
 from models.DTTNet.dp_tdf.dp_tdf_net import DPTDFNet
@@ -65,12 +67,14 @@ class MusicRestorationDataModule(pl.LightningDataModule):
         self.val_files=[]
 
     def setup(self, stage: str | None = None):
-        common_params = {
-            "sr": self.config['sample_rate'],
-            "clip_duration": self.config['clip_duration'],
-        }
-        self.train_dataset = RawStems(**self.config['train_dataset'], **common_params)
-    
+        # common_params = {
+        #     "sr": self.config['sample_rate'],
+        #     "clip_duration": self.config['clip_duration'],
+        # }
+        # self.train_dataset = RawStems(**self.config['train_dataset'], **common_params)
+
+        self.train_dataset = CompoundDataset(**self.config)
+
         # Load validation files (first 5 FLAC files)
         val_dir = Path(self.config.get('val_dir', '~/shihongtan/database/MSRBench/Vocals/mixture')).expanduser()
         if val_dir.exists():

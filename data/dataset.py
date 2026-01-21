@@ -10,6 +10,8 @@ from torch.utils.data import Dataset, Sampler
 from tqdm import tqdm
 from data.augment import StemAugmentation, MixtureAugmentation
 
+from .moises_db.moisesdb.dataset import MoisesDB
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -275,6 +277,358 @@ class RawStems(Dataset):
 
     def __len__(self) -> int:
         return len(self.audio_files)
+
+class MoisesDBStems(Dataset):
+    def __init__(
+            self,
+            target_stem: str,
+            moises_db: Optional[MoisesDB] = None,
+            data_path: Optional[Union[str, Path]] = None,
+            sr: int = 48000,
+            clip_duration: float = 3.0,
+            snr_range: Tuple[float, float] = (0.0, 10.0),
+            apply_augmentation: bool = True,
+            target_aliases: Optional[List[str]] = None,
+            exclude_stems: Optional[List[str]] = None,
+            rms_threshold: float = 0.01,
+            **kwargs,
+    ) -> None:
+        if clip_duration <= 0:
+            raise ValueError("clip_duration must be positive.")
+        if moises_db is None and data_path is None:
+            raise ValueError("Provide either an existing MoisesDB instance or a data_path.")
+        self.moises_db = moises_db or MoisesDB(
+            data_path=str(data_path),
+            sample_rate=sr,
+            quiet=True,
+        )
+        self.data_root = Path(self.moises_db.data_path).expanduser()
+        if not self.data_root.exists():
+            raise FileNotFoundError(f"MoisesDB path '{self.data_root}' does not exist.")
+
+        self.sr = sr
+        self.clip_duration = clip_duration
+        self.snr_range = snr_range
+        self.apply_augmentation = apply_augmentation
+        self.rms_threshold = rms_threshold
+        self.target_aliases = {target_stem.lower()}
+        if target_aliases:
+            self.target_aliases.update(alias.lower() for alias in target_aliases)
+
+        # Keep mixtures out but allow instrumental/accompaniment stems to serve as "other" sources
+        default_excludes = {"mix", "mixture"}
+        self.exclude_stems = default_excludes.union(
+            {stem.lower() for stem in (exclude_stems or [])}
+        )
+
+        self.duration_cache: Dict[Path, float] = {}
+        logger.info("Indexing MoisesDB stems...")
+        self.indexed_tracks = self._index_tracks()
+        if not self.indexed_tracks:
+            raise ValueError("No MoisesDB tracks contained the requested target stem.")
+
+        self.stem_augmentation = StemAugmentation()
+        self.mixture_augmentation = MixtureAugmentation()
+
+    def _index_tracks(self) -> List[Dict[str, List[Path]]]:
+        indexed = []
+        for track in tqdm(self.moises_db.flatten_map, desc="Indexing MoisesDB stems"):
+            track_root = self._resolve_track_root(track)
+            if track_root is None or not track_root.exists():
+                continue
+
+            stems_map = self._collect_stems(track_root)
+            if not stems_map:
+                continue
+
+            target_paths = []
+            other_paths = []
+            for stem_key, files in stems_map.items():
+                if stem_key in self.exclude_stems:
+                    continue
+                (target_paths if stem_key in self.target_aliases else other_paths).extend(files)
+
+            if target_paths and other_paths:
+                indexed.append(
+                    {
+                        "track": track,
+                        "target_stems": target_paths,
+                        "others": other_paths,
+                    }
+                )
+        return indexed
+
+    def _resolve_track_root(self, track: Any) -> Optional[Path]:
+        provider = getattr(track, "provider", None)
+        track_id = getattr(track, "id", None)
+        if provider is None or track_id is None:
+            return None
+        return self.data_root / provider / track_id
+
+    def _collect_stems(self, track_root: Path) -> Dict[str, List[Path]]:
+        stems: Dict[str, List[Path]] = {}
+        try:
+            for audio_path in track_root.rglob("*"):
+                if audio_path.suffix.lower() not in AUDIO_EXTENSIONS:
+                    continue
+                stem_key = self._infer_stem_key(track_root, audio_path)
+                stems.setdefault(stem_key, []).append(audio_path)
+                self._get_duration(audio_path)
+        except Exception as exc:
+            logger.warning(f"Failed to scan stems under {track_root}: {exc}")
+        return stems
+
+    def _infer_stem_key(self, track_root: Path, audio_path: Path) -> str:
+        try:
+            rel_parts = audio_path.relative_to(track_root).parts
+        except ValueError:
+            return audio_path.stem.lower()
+
+        for part in rel_parts[:-1]:
+            normalized = part.lower()
+            if normalized in {"stems", "sources", "audio", "tracks"}:
+                continue
+            return normalized
+        return audio_path.stem.lower()
+
+    def _get_duration(self, file_path: Path) -> float:
+        if file_path not in self.duration_cache:
+            self.duration_cache[file_path] = get_audio_duration(file_path)
+        return self.duration_cache[file_path]
+
+    def _sample_offset(self, file_paths: List[Path]) -> Optional[float]:
+        max_start = float("inf")
+        for path in file_paths:
+            duration = self._get_duration(path)
+            if duration <= self.clip_duration:
+                return None
+            max_start = min(max_start, duration - self.clip_duration)
+
+        if not np.isfinite(max_start) or max_start <= 0:
+            return None
+        return random.uniform(0.0, max_start)
+
+    def __getitem__(self, index: int) -> Dict[str, Any]:
+        track_entry = self.indexed_tracks[index]
+
+        for _ in range(100):
+            num_targets = random.randint(1, min(len(track_entry["target_stems"]), 5))
+            num_others = random.randint(1, min(len(track_entry["others"]), 10))
+            selected_targets = random.sample(track_entry["target_stems"], num_targets)
+            selected_others = random.sample(track_entry["others"], num_others)
+
+            offset = self._sample_offset(selected_targets + selected_others)
+            if offset is None:
+                continue
+
+            target_mix = sum(
+                load_audio(path, offset, self.clip_duration, self.sr)
+                for path in selected_targets
+            ) / num_targets
+            other_mix = sum(
+                load_audio(path, offset, self.clip_duration, self.sr)
+                for path in selected_others
+            ) / num_others
+
+            if not contains_audio_signal(target_mix, self.rms_threshold) or not contains_audio_signal(
+                    other_mix, self.rms_threshold
+            ):
+                continue
+
+            target_clean = target_mix.copy()
+            target_augmented = (
+                self.stem_augmentation.apply(target_mix, self.sr)
+                if self.apply_augmentation
+                else target_mix
+            )
+
+            mixture, target_scale, _ = mix_to_target_snr(
+                target_augmented, other_mix, random.uniform(*self.snr_range)
+            )
+            target_clean *= target_scale
+            mixture_augmented = (
+                self.mixture_augmentation.apply(mixture, self.sr)
+                if self.apply_augmentation
+                else mixture
+            )
+
+            max_val = np.max(np.abs(mixture_augmented)) + 1e-8
+            mixture_final = mixture_augmented / max_val
+            target_final = target_clean / max_val
+            rescale = np.random.uniform(*DEFAULT_GAIN_RANGE)
+
+            mixture = fix_length_to_duration(
+                np.nan_to_num(mixture_final * rescale), self.clip_duration, self.sr
+            )
+            target = fix_length_to_duration(
+                np.nan_to_num(target_final * rescale), self.clip_duration, self.sr
+            )
+            return {"mixture": mixture, "target": target}
+
+        return self.__getitem__(random.randint(0, len(self.indexed_tracks) - 1))
+
+    def __len__(self) -> int:
+        return len(self.indexed_tracks)
+
+class Musdb18HQStems(Dataset):
+    def __init__(
+            self,
+            target_stem: str,
+            root_directory: Union[str, Path] = "~/database/musdb18hq",
+            splits: Optional[List[str]] = None,
+            sr: int = 48000,
+            clip_duration: float = 3.0,
+            snr_range: Tuple[float, float] = (0.0, 10.0),
+            apply_augmentation: bool = True,
+            target_aliases: Optional[List[str]] = None,
+            exclude_stems: Optional[List[str]] = None,
+            rms_threshold: float = 0.01,
+    ) -> None:
+        self.root_directory = Path(root_directory).expanduser()
+        if not self.root_directory.exists():
+            raise FileNotFoundError(f"musdb18hq path '{self.root_directory}' does not exist.")
+        self.splits = splits or ["train", "test"]
+        self.sr = sr
+        self.clip_duration = clip_duration
+        self.snr_range = snr_range
+        self.apply_augmentation = apply_augmentation
+        self.rms_threshold = rms_threshold
+
+        self.target_aliases = {target_stem.lower()}
+        if target_aliases:
+            self.target_aliases.update(alias.lower() for alias in target_aliases)
+
+        default_excludes = {"mix", "mixture"}
+        self.exclude_stems = default_excludes.union(
+            {stem.lower() for stem in (exclude_stems or [])}
+        )
+
+        self.duration_cache: Dict[Path, float] = {}
+        logger.info("Indexing musdb18hq stems...")
+        self.indexed_tracks = self._index_tracks()
+        if not self.indexed_tracks:
+            raise ValueError("No musdb18hq tracks contained the requested target stem.")
+
+        self.stem_augmentation = StemAugmentation()
+        self.mixture_augmentation = MixtureAugmentation()
+
+    def _index_tracks(self) -> List[Dict[str, List[Path]]]:
+        indexed: List[Dict[str, List[Path]]] = []
+        for split in self.splits:
+            split_dir = self.root_directory / split
+            if not split_dir.is_dir():
+                continue
+            for track_dir in split_dir.iterdir():
+                if not track_dir.is_dir():
+                    continue
+                stems_map = self._collect_stems(track_dir)
+                if not stems_map:
+                    continue
+
+                target_paths: List[Path] = []
+                other_paths: List[Path] = []
+                for stem_key, files in stems_map.items():
+                    if stem_key in self.exclude_stems:
+                        continue
+                    (target_paths if stem_key in self.target_aliases else other_paths).extend(files)
+
+                if target_paths and other_paths:
+                    indexed.append(
+                        {
+                            "track_dir": track_dir,
+                            "target_stems": target_paths,
+                            "others": other_paths,
+                        }
+                    )
+        return indexed
+
+    def _collect_stems(self, track_root: Path) -> Dict[str, List[Path]]:
+        stems: Dict[str, List[Path]] = {}
+        for audio_path in track_root.rglob("*"):
+            if audio_path.suffix.lower() not in AUDIO_EXTENSIONS:
+                continue
+            stem_key = audio_path.stem.lower()
+            stems.setdefault(stem_key, []).append(audio_path)
+            self._get_duration(audio_path)
+        return stems
+
+    def _get_duration(self, file_path: Path) -> float:
+        if file_path not in self.duration_cache:
+            self.duration_cache[file_path] = get_audio_duration(file_path)
+        return self.duration_cache[file_path]
+
+    def _sample_offset(self, file_paths: List[Path]) -> Optional[float]:
+        max_start = float("inf")
+        for path in file_paths:
+            duration = self._get_duration(path)
+            if duration <= self.clip_duration:
+                return None
+            max_start = min(max_start, duration - self.clip_duration)
+
+        if not np.isfinite(max_start) or max_start <= 0:
+            return None
+        return random.uniform(0.0, max_start)
+
+    def __getitem__(self, index: int) -> Dict[str, Any]:
+        track_entry = self.indexed_tracks[index]
+
+        for _ in range(100):
+            num_targets = random.randint(1, min(len(track_entry["target_stems"]), 5))
+            num_others = random.randint(1, min(len(track_entry["others"]), 10))
+            selected_targets = random.sample(track_entry["target_stems"], num_targets)
+            selected_others = random.sample(track_entry["others"], num_others)
+
+            offset = self._sample_offset(selected_targets + selected_others)
+            if offset is None:
+                continue
+
+            target_mix = sum(
+                load_audio(path, offset, self.clip_duration, self.sr)
+                for path in selected_targets
+            ) / num_targets
+            other_mix = sum(
+                load_audio(path, offset, self.clip_duration, self.sr)
+                for path in selected_others
+            ) / num_others
+
+            if not contains_audio_signal(target_mix, self.rms_threshold) or not contains_audio_signal(
+                    other_mix, self.rms_threshold
+            ):
+                continue
+
+            target_clean = target_mix.copy()
+            target_augmented = (
+                self.stem_augmentation.apply(target_mix, self.sr)
+                if self.apply_augmentation
+                else target_mix
+            )
+            mixture, target_scale, _ = mix_to_target_snr(
+                target_augmented, other_mix, random.uniform(*self.snr_range)
+            )
+            target_clean *= target_scale
+            mixture_augmented = (
+                self.mixture_augmentation.apply(mixture, self.sr)
+                if self.apply_augmentation
+                else mixture
+            )
+
+            max_val = np.max(np.abs(mixture_augmented)) + 1e-8
+            mixture_final = mixture_augmented / max_val
+            target_final = target_clean / max_val
+            rescale = np.random.uniform(*DEFAULT_GAIN_RANGE)
+
+            mixture = fix_length_to_duration(
+                np.nan_to_num(mixture_final * rescale), self.clip_duration, self.sr
+            )
+            target = fix_length_to_duration(
+                np.nan_to_num(target_final * rescale), self.clip_duration, self.sr
+            )
+            return {"mixture": mixture, "target": target}
+
+        return self.__getitem__(random.randint(0, len(self.indexed_tracks) - 1))
+
+    def __len__(self) -> int:
+        return len(self.indexed_tracks)
 
 
 class InfiniteSampler(Sampler):

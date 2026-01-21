@@ -138,6 +138,9 @@ def main():
     all_target_paths = []
     all_output_paths = []
 
+    avg_all_snr=[]
+    avg_all_zim=[]
+
     calculator=zimtohrli.Pyohrli()
 
     print("--- Calculating Multi-Mel-SNR for each pair ---")
@@ -187,6 +190,9 @@ def main():
                 avg_zim = float(sum(zim_scores) / len(zim_scores))
                 print(f"{target_path}|{output_path}|{avg_mel_snr:.4f}|{avg_zim:.4f}")
 
+                avg_all_snr.append(avg_mel_snr)
+                avg_all_zim.append(avg_zim)
+
                 all_target_paths.append(target_path)
                 all_output_paths.append(output_path)
 
@@ -226,6 +232,8 @@ def main():
             print("\nCould not calculate FAD-CLAP score.")
     else:
         print("\nCould not calculate FAD-CLAP due to issues with embedding generation.")
+    print(f"\nAverage Multi-Mel-SNR: {np.mean(avg_all_snr):.4f}")
+    print(f"Average AIM Score: {np.mean(avg_all_zim):.4f}")
 
 if __name__ == "__main__":
     main()
