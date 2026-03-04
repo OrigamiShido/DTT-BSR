@@ -75,26 +75,23 @@ data:
     sample_rate: 48000
     quiet: True
     target_stem: "vocals"
-    moises_db: moises_db
-    sr: 48000
     clip_duration: 3.0
-    snr_range: (0.0, 10.0)
+    snr_range: [0.0, 10.0]
   RawStemsParams:
     target_stem: "Voc"
     root_directory: "/home/shihongtan/database/RawStem/"
     sr: 48000
     clip_duration: 3.0
-    snr_range: (0.0, 10.0)
+    snr_range: [0.0, 10.0]
   Musdb18HQStemsParams:
     target_stem: "vocals"
     root_directory: "/home/shihongtan/database/musdb18hq/"
     sr: 48000
     clip_duration: 3.0
-    snr_range: (0.0, 10.0)
+    snr_range: [0.0, 10.0]
   dataloader_params:
     batch_size: 2
     num_workers: 8
-
 #data:
 #  sample_rate: 48000
 #  clip_duration: 3.0
@@ -133,6 +130,6 @@ trainer:
   max_steps: 1000000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [6]
+  devices: [1]
   precision: 16-mixed
   save_dir: './experiment/'

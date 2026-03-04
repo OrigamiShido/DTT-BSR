@@ -20,6 +20,7 @@ from models.moises_light import MoisesNet
 from models.DTTNet.dp_tdf.dp_tdf_net import DPTDFNet
 from losses.gan_loss import GeneratorLoss, DiscriminatorLoss, FeatureMatchingLoss
 from losses.reconstruction_loss import MultiMelSpecReconstructionLoss
+from torchmetrics.audio.sdr import SourceAggregatedSignalDistortionRatio
 from losses.reconstruction_loss import MultiComplexSpecReconstructionLoss
 from losses.reconstruction_loss import WaveformReconstructionLoss
 from losses.sisnr_loss import SISNRLoss

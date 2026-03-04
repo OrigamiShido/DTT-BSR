@@ -2,11 +2,12 @@
 import random
 from typing import Dict, Optional, List, Tuple
 
+import yaml
 import torch
 from torch.utils.data import Dataset
 
-from .dataset import RawStems, MoisesDBStems, Musdb18HQStems
-from .moises_db.moisesdb.dataset import MoisesDB
+from data.dataset import RawStems, MoisesDBStems, Musdb18HQStems
+from data.moises_db.moisesdb.dataset import MoisesDB
 
 
 class CompoundDataset(Dataset):
@@ -33,7 +34,7 @@ class CompoundDataset(Dataset):
             "raw": self.RawStems,
             "moises": self.MoisesStems,
             "musdb18": self.Musdb18HQStems,
-        },
+        }
 
         if not datasets:
             raise ValueError("Provide at least one dataset.")
@@ -73,43 +74,14 @@ class CompoundDataset(Dataset):
 
 
 if __name__ == "__main__":
-    moises_db = MoisesDB(
-        data_path="/home/shihongtan/database/moisesdb",
-        sample_rate=48000,
-        quiet=True,
-    )
 
-    raw_dataset = RawStems(
-        target_stem="Voc",
-        root_directory="/home/shihongtan/database/RawStem/",
-        sr=48000,
-        clip_duration=3.0,
-        snr_range=(0.0, 10.0),
-    )
-
-    moises_dataset = MoisesDBStems(
-        target_stem="vocals",
-        moises_db=moises_db,
-        sr=48000,
-        clip_duration=3.0,
-        snr_range=(0.0, 10.0),
-    )
-
-    musdb18_dataset = Musdb18HQStems(
-        target_stem="vocals",
-        root_directory="/home/shihongtan/database/musdb18hq/",
-        sr=48000,
-        clip_duration=3.0,
-        snr_range=(0.0, 10.0),
-    )
+    with open("/home/shihongtan/project/MSRKit/data/test.yaml", 'r') as f:
+        config = yaml.safe_load(f)
 
     compound_dataset = CompoundDataset(
-        datasets={
-            "raw": raw_dataset,
-            "moises": moises_dataset,
-            "musdb18": musdb18_dataset,
-        },
-        probabilities=None,  # 不再使用
+        MoisesDBParams=config["MoisesDBParams"],
+        RawStemsParams=config["RawStemsParams"],
+        Musdb18HQStemsParams=config["Musdb18HQStemsParams"],
     )
 
     print("Total length:", len(compound_dataset))

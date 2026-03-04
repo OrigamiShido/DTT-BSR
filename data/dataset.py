@@ -284,7 +284,7 @@ class MoisesDBStems(Dataset):
             target_stem: str,
             moises_db: Optional[MoisesDB] = None,
             data_path: Optional[Union[str, Path]] = None,
-            sr: int = 48000,
+            sample_rate: int = 48000,
             clip_duration: float = 3.0,
             snr_range: Tuple[float, float] = (0.0, 10.0),
             apply_augmentation: bool = True,
@@ -299,14 +299,14 @@ class MoisesDBStems(Dataset):
             raise ValueError("Provide either an existing MoisesDB instance or a data_path.")
         self.moises_db = moises_db or MoisesDB(
             data_path=str(data_path),
-            sample_rate=sr,
+            sample_rate=sample_rate,
             quiet=True,
         )
         self.data_root = Path(self.moises_db.data_path).expanduser()
         if not self.data_root.exists():
             raise FileNotFoundError(f"MoisesDB path '{self.data_root}' does not exist.")
 
-        self.sr = sr
+        self.sr = sample_rate
         self.clip_duration = clip_duration
         self.snr_range = snr_range
         self.apply_augmentation = apply_augmentation
