@@ -26,7 +26,6 @@ from utils.losses import *
 import utils.save_and_log as sal
 import utils.RunEpoch as rp
 
-
 pattern = re.compile('[\W_]+')
 #default GPU is 1
 device = torch.device(f"cuda:0" if torch.cuda.is_available() else "cpu")
@@ -35,8 +34,11 @@ def create_saves_directory(directory_path, development_flag=False):
     if development_flag:
         return
     if os.path.exists(directory_path):
-        raise Exception(f"The saves directory for {directory_path} already exists")
-    os.mkdir(directory_path)
+        # Allow overwriting for convenience in this custom script, or raise error
+        print(f"Warning: The saves directory {directory_path} already exists")
+        # raise Exception(f"The saves directory for {directory_path} already exists")
+    else:
+        os.mkdir(directory_path)
 
 
 def parse_args(args_list):

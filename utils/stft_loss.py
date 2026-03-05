@@ -6,19 +6,7 @@ import torch.nn as nn
 def stft(x, fft_size, hop_size, win_length, window):
     """
     执行 STFT 并返回幅度谱。
-    参数:
-        x (Tensor): 输入张量，形状为 (B, T)。
-        fft_size (int): FFT 大小。
-        hop_size (int): 步长大小。
-        win_length (int): 窗口长度。
-        window (str): 窗口函数类型。
-    返回:
-        Tensor: 幅度谱，形状为 (B, Frames, Freq)。
     """
-    # -------------------------------------------------------------------------
-    # 修复: 使用 return_complex=True (PyTorch 新标准)
-    # 这样可以直接获得复数张量，然后用 torch.abs() 计算幅度。
-    # -------------------------------------------------------------------------
     x_stft = torch.stft(x, fft_size, hop_size, win_length, window, return_complex=True)
 
     # x_stft 形状: (B, F, T) (Complex)
@@ -28,7 +16,7 @@ def stft(x, fft_size, hop_size, win_length, window):
     # 避免 NaN
     mag = torch.clamp(mag, min=1e-7)
 
-    # 原始代码期望 (B, T, F)，所以我们需要转置
+    # 转置
     return mag.transpose(2, 1)
 
 
@@ -66,8 +54,10 @@ class STFTLoss(nn.Module):
         self.log_stft_magnitude_loss = LogSTFTMagnitudeLoss()
 
     def forward(self, x, y):
-        x_mag = stft(x, self.fft_size, self.shift_size, self.win_length, self.window)
-        y_mag = stft(y, self.fft_size, self.shift_size, self.win_length, self.window)
+        window = self.window.to(x.device)
+
+        x_mag = stft(x, self.fft_size, self.shift_size, self.win_length, window)
+        y_mag = stft(y, self.fft_size, self.shift_size, self.win_length, window)
         sc_loss = self.spectral_convergenge_loss(x_mag, y_mag)
         mag_loss = self.log_stft_magnitude_loss(x_mag, y_mag)
         return sc_loss, mag_loss

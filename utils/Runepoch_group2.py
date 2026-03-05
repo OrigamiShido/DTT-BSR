@@ -1,0 +1,149 @@
+import torch
+import torch.nn.functional as F
+from .losses import *
+from .save_and_log import *
+from .stft_loss import *
+from .augmentation import shift_phase
+import numpy as np
+
+
+def runEpoch(loader, config, netG, netD, optG, optD, device, epoch,
+             steps, writer, gen_autoclip, disc_autoclip, adv_autobalancer, optD_spec=None, netD_spec=None,
+             validation=False):
+    # Initialize costs array
+    # Format: [Loss_D, Loss_G, Loss_Feat, Loss_Rec, SDR, L1_Wav, Grad_Norm]
+    costs = [[0, 0, 0, 0, 0, 0, 0]]
+
+    # Only initialize GAN Loss calculator if we are using a discriminator
+    gan_loss_calculator = None
+    if config.use_discriminator and netD is not None:
+        gan_loss_calculator = GANLoss(netD)
+
+    output_aud = [np.array([]), np.array([]), np.array([])]
+    validation_song_seconds = 0
+    multi_scale_mel_loss = MultiResolutionSTFTLoss().to(device)
+
+    for iterno, x_t in enumerate(loader):
+        # Data loading (Same as original)
+        if config.mono:
+            x_t_0 = x_t[0].unsqueeze(1).float().to(device)  # Dirty Source
+            x_t_1 = x_t[1].unsqueeze(1).float().to(device)  # Clean Target
+            x_t_2 = x_t[2].unsqueeze(1).float().to(device)  # Mixture (Unused usually)
+        else:
+            x_t_0 = x_t[0].float().to(device)
+            x_t_1 = x_t[1].float().to(device)
+            x_t_2 = x_t[2].float().to(device)
+            x_t_1_mono = (x_t_1[:, 0, :] + x_t_1[:, 1, :])
+            x_t_1_mono /= torch.max(torch.abs(x_t_1_mono))
+
+        # Generator Forward Pass
+        inp = F.pad(x_t_0, (4000, 4000), "constant", 0)
+        x_pred_t = netG(inp, x_t_0.unsqueeze(1)).squeeze(1)
+
+        # --- Loss 1: Time Domain L1 Loss ---
+        wav_loss = F.l1_loss(x_t_1, x_pred_t)
+
+        # --- Loss 2: Frequency Domain Reconstruction Loss ---
+        if not config.mono:
+            x_pred_t_mono = (x_pred_t[:, 0, :] + x_pred_t[:, 1, :])
+            x_pred_t_mono /= torch.max(torch.abs(x_pred_t_mono))
+            mel_reconstruction_loss = mel_spec_loss(x_pred_t_mono.squeeze(1), x_t_1_mono.squeeze(1))
+        else:
+            spec_convergence, log_mel_loss = multi_scale_mel_loss(x_pred_t.squeeze(1), x_t_1.squeeze(1))
+            if config.use_both_reconstruction:
+                mel_reconstruction_loss = log_mel_loss + spec_convergence
+            else:
+                mel_reconstruction_loss = log_mel_loss
+
+        # --- Metric: SISDR (For monitoring only) ---
+        sdr = SISDRLoss()
+        if config.mono:
+            sdr_loss = sdr(x_pred_t.squeeze(1).unsqueeze(2),
+                           x_t_1.squeeze(1).unsqueeze(2))
+        else:
+            sdr_loss = sdr(x_pred_t_mono.unsqueeze(2), x_t_1_mono.unsqueeze(2))
+
+        # ==============================================================================
+        # CRITICAL CHANGE: Branching logic for Pure Regression vs GAN
+        # ==============================================================================
+
+        loss_D = torch.tensor(0.0).to(device)
+        loss_G = torch.tensor(0.0).to(device)
+        loss_feat = torch.tensor(0.0).to(device)
+
+        if config.use_discriminator and netD is not None:
+            # === Original GAN Logic ===
+            fake = x_pred_t.to(device)
+            real = x_t_1.to(device)
+
+            # Discriminator Step
+            if config.augment:
+                factor = np.random.uniform(-np.pi, np.pi)
+                loss_D = gan_loss_calculator.discriminator_loss(shift_phase(fake.squeeze(1), factor).unsqueeze(1),
+                                                                shift_phase(real.squeeze(1), factor).unsqueeze(1))
+            else:
+                loss_D = gan_loss_calculator.discriminator_loss(fake, real)
+
+            if not validation and epoch >= config.pretrain_epoch:
+                netD.zero_grad()
+                loss_D.backward()
+                optD.step()
+
+            # Generator GAN Loss components
+            loss_G, loss_feat = gan_loss_calculator.generator_loss(fake, real)
+
+        # ==============================================================================
+        # Optimizer Step (Generator)
+        # ==============================================================================
+
+        if not validation:
+            netG.zero_grad()
+
+            # Calculate Total Loss
+            if config.use_discriminator and epoch >= config.pretrain_epoch:
+                # Use AutoBalancer for GAN training
+                if config.adv_only:
+                    total_generator_loss = sum(adv_autobalancer(loss_G, loss_feat))
+                else:
+                    total_generator_loss = sum(adv_autobalancer(loss_G, loss_feat, mel_reconstruction_loss))
+            else:
+                # --- PURE REGRESSION LOGIC ---
+                # For Group 2: Focus heavily on STFT loss and L1 loss
+                # You can adjust weights here.
+                total_generator_loss = mel_reconstruction_loss + (10.0 * wav_loss)
+
+            total_generator_loss.backward()
+            _, gen_grad_norm = gen_autoclip(netG)
+            optG.step()
+
+            costs = [
+                [loss_D.item(), loss_G.item(), loss_feat.item(),
+                 mel_reconstruction_loss.item(),
+                 -1 * sdr_loss, wav_loss.item(), gen_grad_norm]]
+        else:
+            curr_costs = [loss_D.item(), loss_G.item(), loss_feat.item(),
+                          mel_reconstruction_loss.item(),
+                          -1 * sdr_loss, wav_loss.item(), 0]
+            for i in range(len(costs[0])):
+                costs[0][i] += curr_costs[i]
+
+        # Call basic log info
+        if not validation:
+            basic_logs(costs, writer, steps, epoch, iterno)
+        else:
+            validation_writer(epoch, steps)
+        steps += 1
+
+        # Audio logging for validation
+        if validation and x_t[3][0] == config.validation_song:
+            if config.mono and validation_song_seconds >= config.validation_song_start and validation_song_seconds <= config.validation_song_end:
+                output_aud[0] = np.concatenate((output_aud[0], x_t_0.squeeze(0).squeeze(0).cpu().numpy()))
+                output_aud[1] = np.concatenate((output_aud[1], x_t_1.squeeze(0).squeeze(0).cpu().numpy()))
+                output_aud[2] = np.concatenate((output_aud[2], x_pred_t.squeeze(0).squeeze(0).cpu().numpy()))
+            validation_song_seconds += 1
+
+    if validation:
+        for i in range(len(costs[0])):
+            costs[0][i] /= (iterno + 1)
+
+    return steps, costs, output_aud

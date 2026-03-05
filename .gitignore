@@ -130,17 +130,17 @@ dmypy.json
 
 # runtime artifacts
 saves*
-runs*
-wandb*
+checkpoints_key/runs
+checkpoints_key/wandb
 nohup.out
 *.png*
 *.wav*
 *.csv*
 
-datasets/
+
 checkpoints/
 checkpoints*/
-runs/
+checkpoints_key/runs/
 outputflac/
 checkpointsbest_SDR_netG/
 checkpoints99netG/

@@ -1,5 +1,6 @@
 
-numpy
+torchaudio==2.4.0
+numpy==1.23.5
 einops
 tqdm
 diffq
@@ -8,7 +9,10 @@ julius
 imageio
 matplotlib
 sox
-SoundFile
+SoundFile==0.13.1
 librosa==0.8.1
 torch
 wandb
+torchcodec
+transformers==4.57.3
+soxr

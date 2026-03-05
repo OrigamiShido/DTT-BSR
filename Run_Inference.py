@@ -7,7 +7,7 @@ import math
 import glob
 import torch.nn.functional as F
 from tqdm import tqdm
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 
 def overlap_add_inference(model, audio, sample_rate, segment_length_sec=1.0, overlap=0.25, context_pad=4000,
                           device='cuda'):
@@ -139,7 +139,7 @@ class MSGProcessor:
             sys.exit(1)
 
     def process(self, input_path, output_path):
-        # 1. 加载原始音频 (自动识别采样率，例如 44100)
+        # 1. 加载原始音频
         try:
             bass_audio, original_sr = torchaudio.load(input_path)
         except Exception as e:
@@ -209,7 +209,7 @@ if __name__ == "__main__":
     # MSG 参数
     parser.add_argument("--msg_ckpt", required=True, help="Official MSG .pth checkpoint")
     parser.add_argument("--msg_repo_path", required=True, help="Path to MSG code repository")
-    parser.add_argument("--msg_sr", type=int, default=16000, help="MSG model sample rate (default 16000)")
+    parser.add_argument("--msg_sr", type=int, default=48000, help="MSG model sample rate (default 16000)")
 
     args = parser.parse_args()
 

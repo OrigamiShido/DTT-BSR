@@ -1,8 +1,9 @@
-import torch 
+import torch
 import torch.nn.functional as F
 import torch.nn as nn
 import numpy as np
 from typing import List
+
 
 def disc_outputs(config, x_pred_t, x_t_1, device, netD_spec):
     D_fake_det_spec = netD_spec(
@@ -10,13 +11,15 @@ def disc_outputs(config, x_pred_t, x_t_1, device, netD_spec):
     D_real_spec = netD_spec(x_t_1.to(device))
     return D_fake_det_spec, D_real_spec
 
+
 def Gen_loss(D_fake, D_fake_spec):
     loss_G = 0
     for scale in D_fake:
         loss_G += -scale[-1].mean()
 
-    loss_G += -3*D_fake_spec[-1].mean()
+    loss_G += -3 * D_fake_spec[-1].mean()
     return loss_G
+
 
 def waveform_discriminator_loss(D_fake, D_real):
     loss_D = 0
@@ -33,6 +36,7 @@ def spectral_discriminator_loss(fake, real):
 
     loss_D_spec += F.relu(1 - real[-1]).mean()
     return loss_D_spec
+
 
 def feature_loss(config, D_fake, D_real, D_fake_spec, D_real_spec):
     loss_feat = 0
@@ -51,22 +55,24 @@ def feature_loss(config, D_fake, D_real, D_fake_spec, D_real_spec):
                                          D_real_spec[k].detach())
     return loss_feat, loss_feat_spec
 
-def mel_spec_loss(target,estimated):
+
+def mel_spec_loss(target, estimated):
     eps = 1e-5
 
     target_spec = torch.stft(input=target, n_fft=1024)
     real_part, imag_part = target_spec.unbind(-1)
-    target_mag_spec = torch.log10(torch.sqrt(real_part**2 + imag_part**2 + eps))
-    
+    target_mag_spec = torch.log10(torch.sqrt(real_part ** 2 + imag_part ** 2 + eps))
+
     estimated_spec = torch.stft(input=estimated, n_fft=1024)
     real_part, imag_part = estimated_spec.unbind(-1)
-    estimated_mag_spec = torch.log10(torch.sqrt(real_part**2 + imag_part**2 +eps))
+    estimated_mag_spec = torch.log10(torch.sqrt(real_part ** 2 + imag_part ** 2 + eps))
 
-    return F.l1_loss(target_mag_spec,estimated_mag_spec)
+    return F.l1_loss(target_mag_spec, estimated_mag_spec)
+
 
 class AutoBalance(nn.Module):
     def __init__(
-        self, ratios: List[float] = [1], frequency: int = 1, max_iters: int = None
+            self, ratios: List[float] = [1], frequency: int = 1, max_iters: int = None
     ):
         """
         Auto-balances losses with each other by solving a system of
@@ -120,6 +126,7 @@ class AutoBalance(nn.Module):
         self.iters += 1
         return [w * l for w, l in zip(self.weights, loss_vals)]
 
+
 class GANLoss(nn.Module):
     """
     Computes a discriminator loss, given a discriminator on
@@ -129,9 +136,9 @@ class GANLoss(nn.Module):
     """
 
     def __init__(
-        self,
-        discriminator,
-        feature_weight: float = 10.0,
+            self,
+            discriminator,
+            feature_weight: float = 10.0,
     ):
         super().__init__()
 
@@ -164,6 +171,7 @@ class GANLoss(nn.Module):
                 loss_feature += F.l1_loss(d_fake[i][j], d_real[i][j].detach())
         return loss_g, loss_feature
 
+
 class SISDRLoss(nn.Module):
     """
     Computes the Scale-Invariant Source-to-Distortion Ratio between a batch
@@ -186,6 +194,7 @@ class SISDRLoss(nn.Module):
           to not focus on making already good examples better. Defaults to None.
     """
     DEFAULT_KEYS = {'audio': 'estimates', 'source_audio': 'references'}
+
     def __init__(self, scaling=True, return_scaling=False, reduction='mean',
                  zero_mean=True, clip_min=None):
         self.scaling = scaling
@@ -194,12 +203,13 @@ class SISDRLoss(nn.Module):
         self.return_scaling = return_scaling
         self.clip_min = clip_min
         super().__init__()
+
     def forward(self, estimates, references):
         eps = 1e-8
         # num_batch, num_samples, num_sources
         _shape = references.shape
-        references = references.reshape(-1, _shape[-2], _shape[-1]) + eps   # <---- HERE
-        estimates = estimates.reshape(-1, _shape[-2], _shape[-1]) + eps   # <---- AND HERE
+        references = references.reshape(-1, _shape[-2], _shape[-1]) + eps  # <---- HERE
+        estimates = estimates.reshape(-1, _shape[-2], _shape[-1]) + eps  # <---- AND HERE
         # samples now on axis 1
         if self.zero_mean:
             mean_reference = references.mean(dim=1, keepdim=True)
