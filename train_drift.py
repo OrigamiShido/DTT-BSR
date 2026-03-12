@@ -12,6 +12,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
 import torchaudio
 
+from functools import partial
+
 from data.dataset import RawStems, InfiniteSampler
 from data.compound import CompoundDataset
 
@@ -24,48 +26,22 @@ from torchmetrics.audio.sdr import SourceAggregatedSignalDistortionRatio
 from losses.reconstruction_loss import MultiComplexSpecReconstructionLoss
 from losses.reconstruction_loss import WaveformReconstructionLoss
 from losses.sisnr_loss import SISNRLoss
+from losses.drift_loss import DriftLoss,drifting_loss,compute_drift
 
 from modules.discriminator.MultiPeriodDiscriminator import MultiPeriodDiscriminator
 from modules.discriminator.MultiScaleDiscriminator import MultiScaleDiscriminator
 from modules.discriminator.MultiFrequencyDiscriminator import MultiFrequencyDiscriminator
 from modules.discriminator.MultiResolutionDiscriminator import MultiResolutionDiscriminator
 
-class CombinedDiscriminator(nn.Module):
-    """A wrapper to combine multiple discriminators into a single module."""    
-    def __init__(self, discriminators_config: List[Dict[str, Any]]):
-        super().__init__()
-        disc_list = []
-        for config in discriminators_config:
-            name = config['name']
-            params = config['params']
-            if name == 'MultiPeriodDiscriminator':
-                disc_list.append(MultiPeriodDiscriminator(**params))
-            elif name == 'MultiScaleDiscriminator':
-                disc_list.append(MultiScaleDiscriminator(**params))
-            elif name == 'MultiFrequencyDiscriminator':
-                disc_list.append(MultiFrequencyDiscriminator(**params))
-            elif name == 'MultiResolutionDiscriminator':
-                disc_list.append(MultiResolutionDiscriminator(**params))
-            else:
-                raise ValueError(f"Unknown discriminator type: {name}")
-        self.discriminators = nn.ModuleList(disc_list)
-
-    def forward(self, x: torch.Tensor):
-        all_scores, all_fmaps = [], []
-        for disc in self.discriminators:
-            scores, fmaps = disc(x)
-            all_scores.extend(scores)
-            all_fmaps.extend(fmaps)
-        return all_scores, all_fmaps
-
 class MusicRestorationDataModule(pl.LightningDataModule):
     """Handles data loading for training."""
+
     def __init__(self, config: Dict[str, Any]):
         super().__init__()
         self.config = config
         self.train_dataset = None
 
-        self.val_files=[]
+        self.val_files = []
 
     def setup(self, stage: str | None = None):
         common_params = {
@@ -96,31 +72,35 @@ class MusicRestorationDataModule(pl.LightningDataModule):
             **self.config['dataloader_params']
         )
 
+
 class MusicRestorationModule(pl.LightningModule):
     """
     PyTorch Lightning module for music source restoration,
     handling model architecture, losses, optimization, and logging.
     """
+
     def __init__(self, config: Dict[str, Any]):
         super().__init__()
         self.save_hyperparameters(config)
-        self.automatic_optimization = False # Needed for GANs
+        self.automatic_optimization = False  # Needed for GANs
 
         # 1. Generator
         self.generator = self._init_generator()
 
         # 2. Discriminator
-        self.discriminator = CombinedDiscriminator(self.hparams.discriminators)
+        # self.discriminator = CombinedDiscriminator(self.hparams.discriminators)
 
         # 3. Losses
         loss_cfg = self.hparams.losses
-        self.loss_gen_adv = GeneratorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
-        self.loss_disc_adv = DiscriminatorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
-        self.loss_feat = FeatureMatchingLoss()
-        self.loss_recon = MultiMelSpecReconstructionLoss(**loss_cfg['reconstruction_loss'])
+        # self.loss_gen_adv = GeneratorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
+        # self.loss_disc_adv = DiscriminatorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
+        # self.loss_feat = FeatureMatchingLoss()
+        # self.loss_recon = MultiMelSpecReconstructionLoss(**loss_cfg['reconstruction_loss'])
+        self.temp=loss_cfg.get('drift_temp', 0.05)
+        self.loss_drift=DriftLoss(temp=loss_cfg.get('drift_temp', 0.05))
         # self.loss_phase = MultiComplexSpecReconstructionLoss(**loss_cfg['phase_loss'])
         # self.loss_time=WaveformReconstructionLoss()
-        
+
     def _init_generator(self):
         model_cfg = self.hparams.model
         if model_cfg['name'] == 'MelRNN':
@@ -140,50 +120,53 @@ class MusicRestorationModule(pl.LightningModule):
         return self.generator(x)
 
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
-        opt_g, opt_d = self.optimizers()
-        
+        opt_g = self.optimizers()
+
         target = batch['target']
         mixture = batch['mixture']
 
         # reshape both from (b, c, t) to ((b, c) t)
         target = rearrange(target, 'b c t -> (b c) t')
         mixture = rearrange(mixture, 'b c t -> (b c) t')
-        
+
         # --- Train Discriminator ---
         generated = self(mixture)
-        
-        real_scores, _ = self.discriminator(target.unsqueeze(1))
-        fake_scores, _ = self.discriminator(generated.detach().unsqueeze(1))
-        
-        d_loss, _, _ = self.loss_disc_adv(real_scores, fake_scores)
-        
-        opt_d.zero_grad()
-        self.manual_backward(d_loss)
-        opt_d.step()
-        self.log('train/d_loss', d_loss, prog_bar=True)
 
-        # --- Train Generator ---
-        real_scores, real_fmaps = self.discriminator(target.unsqueeze(1))
-        fake_scores, fake_fmaps = self.discriminator(generated.unsqueeze(1))
+        # real_scores, _ = self.discriminator(target.unsqueeze(1))
+        # fake_scores, _ = self.discriminator(generated.detach().unsqueeze(1))
 
-        # Reconstruction Loss
-        loss_recon = self.loss_recon(generated, target)
-        
-        # Adversarial Loss
-        loss_adv, _ = self.loss_gen_adv(fake_scores)
-        
-        # Feature Matching Loss
-        loss_feat = self.loss_feat(real_fmaps, fake_fmaps)
+        # d_loss, _, _ = self.loss_disc_adv(real_scores, fake_scores)
+
+        # opt_d.zero_grad()
+        # self.manual_backward(d_loss)
+        # opt_d.step()
+        # self.log('train/d_loss', d_loss, prog_bar=True)
+
+        # # --- Train Generator ---
+        # real_scores, real_fmaps = self.discriminator(target.unsqueeze(1))
+        # fake_scores, fake_fmaps = self.discriminator(generated.unsqueeze(1))
+        #
+        # # Reconstruction Loss
+        # loss_recon = self.loss_recon(generated, target)
+        #
+        # # Adversarial Loss
+        # loss_adv, _ = self.loss_gen_adv(fake_scores)
+        #
+        # # Feature Matching Loss
+        # loss_feat = self.loss_feat(real_fmaps, fake_fmaps)
 
         # Phase Loss
         # loss_phase=self.loss_phase(generated, target)
         # loss_time=self.loss_time(generated, target)
 
+        loss_drift=drifting_loss(generated, target, compute_drift=partial(compute_drift, temp=self.temp))
+
         loss_cfg = self.hparams.losses
         g_loss = (
-            loss_recon * loss_cfg['lambda_recon'] + 
-            loss_adv * loss_cfg['lambda_gan'] + 
-            loss_feat * loss_cfg['lambda_feat']
+            loss_drift* loss_cfg['lambda_drift']
+                # loss_recon * loss_cfg['lambda_recon'] +
+                # loss_adv * loss_cfg['lambda_gan'] +
+                # loss_feat * loss_cfg['lambda_feat']
             # loss_time * loss_cfg['lambda_time']
             # loss_phase * loss_cfg['lambda_phase']
         )
@@ -193,35 +176,36 @@ class MusicRestorationModule(pl.LightningModule):
         opt_g.step()
 
         self.log('train/g_loss', g_loss, prog_bar=True)
-        self.log('train/loss_recon', loss_recon)
-        self.log('train/loss_adv', loss_adv)
-        self.log('train/loss_feat', loss_feat)
+        self.log('train/loss_drift', loss_drift)
+        # self.log('train/loss_recon', loss_recon)
+        # self.log('train/loss_adv', loss_adv)
+        # self.log('train/loss_feat', loss_feat)
         # self.log('train/loss_phase', loss_phase)
         # self.log('train/loss_time', loss_time)
-        
+
         # Step schedulers
-        sch_g, sch_d = self.lr_schedulers()
+        sch_g = self.lr_schedulers()
         if sch_g: sch_g.step()
-        if sch_d: sch_d.step()
 
     def configure_optimizers(self):
         # Generator Optimizer
         opt_g_cfg = self.hparams.optimizer_g
         opt_g = torch.optim.AdamW(self.generator.parameters(), lr=opt_g_cfg['lr'], betas=tuple(opt_g_cfg['betas']))
-        
+
         # Discriminator Optimizer
-        opt_d_cfg = self.hparams.optimizer_d
-        opt_d = torch.optim.AdamW(self.discriminator.parameters(), lr=opt_d_cfg['lr'], betas=tuple(opt_d_cfg['betas']))
+        # opt_d_cfg = self.hparams.optimizer_d
+        # opt_d = torch.optim.AdamW(self.discriminator.parameters(), lr=opt_d_cfg['lr'], betas=tuple(opt_d_cfg['betas']))
 
         # Schedulers
         if 'warm_up_steps' in self.hparams.scheduler:
             warmup_steps = self.hparams.scheduler['warm_up_steps']
             lr_lambda = lambda step: min(1.0, (step + 1) / warmup_steps)
             scheduler_g = torch.optim.lr_scheduler.LambdaLR(opt_g, lr_lambda)
-            scheduler_d = torch.optim.lr_scheduler.LambdaLR(opt_d, lr_lambda)
-            return [opt_g, opt_d], [scheduler_g, scheduler_d]
-        
-        return [opt_g, opt_d], []
+            # scheduler_d = torch.optim.lr_scheduler.LambdaLR(opt_d, lr_lambda)
+            # return [opt_g, opt_d], [scheduler_g, scheduler_d]
+
+        return [opt_g], []
+        # return [opt_g, opt_d], []
 
     def on_train_batch_end(self, outputs, batch, batch_idx):
         """Perform validation inference every 5000 steps."""
@@ -294,6 +278,7 @@ class MusicRestorationModule(pl.LightningModule):
 
         self.train()
 
+
 def main():
     parser = argparse.ArgumentParser(description="Train a Music Source Restoration Model")
     parser.add_argument("--config", type=str, required=True, help="Path to the config file.")
@@ -310,7 +295,7 @@ def main():
     exp_name = f"{config['model']['name']}"
     exp_name = exp_name.replace(" ", "_")
     save_dir = Path(config['trainer']['save_dir']) / config['project_name'] / exp_name
-    
+
     # Callbacks
     checkpoint_callback = ModelCheckpoint(
         dirpath=save_dir / "checkpoints",
@@ -320,14 +305,14 @@ def main():
         auto_insert_metric_name=False
     )
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    
+
     # Logger
     logger = TensorBoardLogger(
         save_dir=config['trainer']['save_dir'],
         name=config['project_name'],
         version=exp_name
     )
-    
+
     # Trainer
     trainer = pl.Trainer(
         logger=logger,
@@ -341,8 +326,9 @@ def main():
         # strategy="ddp_find_unused_parameters_true",
         # use_distributed_sampler=False,
     )
-    
+
     trainer.fit(model_module, datamodule=data_module)
+
 
 if __name__ == '__main__':
     main()

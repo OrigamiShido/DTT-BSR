@@ -1,4 +1,4 @@
-project_name: "msrkit"
+project_name: "msrkit-drift"
 exp_name: "melroformer_vocal_restoration"
 
 #model:
@@ -69,40 +69,43 @@ discriminators:
       sample_rate: 48000
       norm: True
 
-data:
-  MoisesDBParams:
-    data_path: "/home/shihongtan/database/moisesdb"
-    sample_rate: 48000
-    quiet: True
-    target_stem: "vocals"
-    clip_duration: 3.0
-    snr_range: [0.0, 10.0]
-  RawStemsParams:
-    target_stem: "Voc"
-    root_directory: "/home/shihongtan/database/RawStem/"
-    sr: 48000
-    clip_duration: 3.0
-    snr_range: [0.0, 10.0]
-  Musdb18HQStemsParams:
-    target_stem: "vocals"
-    root_directory: "/home/shihongtan/database/musdb18hq/"
-    sr: 48000
-    clip_duration: 3.0
-    snr_range: [0.0, 10.0]
-  dataloader_params:
-    batch_size: 2
-    num_workers: 8
 #data:
-#  sample_rate: 48000
-#  clip_duration: 3.0
-#  train_dataset:
+#  MoisesDBParams:
+#    data_path: "/home/shihongtan/database/moisesdb"
+#    sample_rate: 48000
+#    quiet: True
+#    target_stem: "vocals"
+#    clip_duration: 3.0
+#    snr_range: [0.0, 10.0]
+#  RawStemsParams:
 #    target_stem: "Voc"
 #    root_directory: "/home/shihongtan/database/RawStem/"
-#    apply_augmentation: True
+#    sr: 48000
+#    clip_duration: 3.0
+#    snr_range: [0.0, 10.0]
+#  Musdb18HQStemsParams:
+#    target_stem: "vocals"
+#    root_directory: "/home/shihongtan/database/musdb18hq/"
+#    sr: 48000
+#    clip_duration: 3.0
 #    snr_range: [0.0, 10.0]
 #  dataloader_params:
 #    batch_size: 2
 #    num_workers: 8
+data:
+  sample_rate: 48000
+  clip_duration: 3.0
+  train_dataset:
+    target_stem: "Voc"
+    root_directory: "/home/shihongtan/database/RawStem/"
+    apply_augmentation: True
+    snr_range: [0.0, 10.0]
+  dataloader_params:
+    batch_size: 2
+    num_workers: 8
+    pin_memory: true
+    persistent_workers: true
+
 
 optimizer_g:
   lr: 0.0002
@@ -120,6 +123,8 @@ losses:
   lambda_recon: 45.0
   lambda_feat: 4.0
   lambda_gan: 2.0
+  lambda_drift: 1.0
+  drift_temp: 0.2
   reconstruction_loss:
     sample_rate: 48000
     n_fft: [1024, 2048, 512]
@@ -127,9 +132,9 @@ losses:
     n_mels: [80, 160, 40]
 
 trainer:
-  max_steps: 1000000
+  max_steps: 1000
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
-  devices: [1]
+  devices: [2]
   precision: 16-mixed
   save_dir: './experiment/'
